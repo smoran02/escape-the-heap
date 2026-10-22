@@ -102,10 +102,15 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
 }
 .rules li::before { content: "▪"; color: var(--orange); font-size: 0.9em; }
 .rules li b { color: var(--text); }
-.team-form { display: flex; gap: 10px; flex-wrap: wrap; }
-.team-form label { width: 100%; font-weight: 700; font-size: 0.95rem; }
+.team-form { display: grid; gap: 10px; }
+.team-form label, .team-form .names-label { margin: 0; font-weight: 700; font-size: 0.95rem; }
+.team-form .names-label { margin-top: 0.6em; }
+.team-form .names-label span { font-weight: 400; color: var(--muted); }
+.team-form .names { display: grid; gap: 10px; }
+@media (min-width: 640px) { .team-form .names { grid-template-columns: repeat(3, 1fr); } }
+.team-form .btn { justify-self: start; margin-top: 0.6em; }
 .team-form input {
-  flex: 1 1 220px; min-width: 0;
+  min-width: 0;
   font: inherit; font-size: 1.1rem;
   padding: 0.75em 0.9em;
   border-radius: 10px;
@@ -346,6 +351,12 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
   <form id="team-form" class="team-form" autocomplete="off">
     <label for="team-name">Team name</label>
     <input id="team-name" maxlength="24" placeholder="e.g. The Dangling Pointers" required>
+    <p class="names-label" id="names-label">Your names <span>(first and last, for attendance; only your instructor sees them)</span></p>
+    <div class="names" role="group" aria-labelledby="names-label">
+      <input id="player-1" maxlength="40" placeholder="Your name" aria-label="Your name" required>
+      <input id="player-2" maxlength="40" placeholder="Partner's name" aria-label="Partner's name">
+      <input id="player-3" maxlength="40" placeholder="Third (trios only)" aria-label="Third teammate's name">
+    </div>
     <button class="btn" type="submit">Enter the heap</button>
   </form>
   <p class="foot">CPSC 121A · Cal State Fullerton</p>
@@ -703,9 +714,9 @@ function newId() {
   else bytes.forEach((_, i) => { bytes[i] = Math.floor(Math.random() * 256); });
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
-function fresh(team) {
+function fresh(team, players) {
   const now = Date.now();
-  return { id: newId(), team, startedAt: now, roomEnteredAt: now, room: 0, hints: [], wrong: 0, lockUntil: 0, finishedAt: null, cleared: null };
+  return { id: newId(), team, players, startedAt: now, roomEnteredAt: now, room: 0, hints: [], wrong: 0, lockUntil: 0, finishedAt: null, cleared: null };
 }
 function save() { if (state) store.set(KEY, state); }
 
@@ -714,7 +725,7 @@ function save() { if (state) store.set(KEY, state); }
 function report(type, extra = {}) {
   if (!REPORT_URL || !state) return;
   const body = JSON.stringify(Object.assign({
-    team: state.id, name: state.team, type, room: state.room, current: state.room,
+    team: state.id, name: state.team, players: state.players || [], type, room: state.room, current: state.room,
     hints: state.hints.length, wrong: state.wrong, elapsed: elapsedMs(), finished: !!state.finishedAt,
   }, extra));
   try {
@@ -912,7 +923,12 @@ $('team-form').addEventListener('submit', (ev) => {
   ev.preventDefault();
   const team = $('team-name').value.trim().slice(0, 24);
   if (!team) return;
-  state = fresh(team);
+  // Semicolons separate names in the scoreboard sheet, so none inside a name.
+  const players = ['player-1', 'player-2', 'player-3']
+    .map((id) => $(id).value.replace(/;/g, ',').replace(/\s+/g, ' ').trim().slice(0, 40))
+    .filter(Boolean);
+  if (!players.length) return;
+  state = fresh(team, players);
   save();
   report('join');
   startTicking();
