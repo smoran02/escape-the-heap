@@ -1,0 +1,1141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Escape the Heap</title>
+<meta name="description" content="CPSC 121A team escape room: pointers, the heap, and shared_ptr.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2300244E'/%3E%3Crect x='9' y='6' width='14' height='21' rx='2' fill='none' stroke='%23FF7900' stroke-width='2.5'/%3E%3Ccircle cx='19' cy='17' r='1.8' fill='%23FF7900'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;700&display=swap">
+<style>
+:root {
+  --bg: #061528;
+  --surface: #00244E;
+  --surface-2: #0B2F5E;
+  --line: rgba(138, 204, 228, 0.18);
+  --grid: rgba(138, 204, 228, 0.07);
+  --line-strong: rgba(138, 204, 228, 0.42);
+  --text: #EEF2F6;
+  --muted: #A9BFC6;
+  --orange: #FF7900;
+  --citrus: #EDA941;
+  --sky: #8ACCE4;
+  --green: #A6DB86;
+  --code-bg: #03101F;
+  --tok-type: #8ACCE4;
+  --tok-id: #FFA352;
+  --tok-val: #A6DB86;
+  --tok-com: #8796A5;
+  --font: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Atkinson Hyperlegible Mono', Consolas, ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  min-height: 100vh;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1200px 600px at 85% -10%, rgba(41, 115, 182, 0.28), transparent 60%),
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: auto, 44px 44px, 44px 44px;
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 17px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+[hidden] { display: none !important; }
+code, .mono { font-family: var(--mono); }
+p code, li code, .ask code, .note code, .why code {
+  font-size: 0.92em;
+  background: rgba(138, 204, 228, 0.12);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 0.05em 0.35em;
+  white-space: nowrap;
+}
+button { font: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+
+.wrap { max-width: 880px; margin: 0 auto; padding: 0 16px 64px; }
+.kicker {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--orange);
+}
+h1, h2, h3 { line-height: 1.15; margin: 0; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5em;
+  border: 0; border-radius: 10px;
+  padding: 0.8em 1.3em;
+  font-weight: 700;
+  background: var(--orange); color: #00244E;
+  transition: transform 0.08s ease, filter 0.15s ease;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:active { transform: translateY(1px); }
+.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+.btn.ghost { background: transparent; color: var(--text); border: 1.5px solid var(--line-strong); }
+.btn.small { padding: 0.45em 0.9em; font-size: 0.9rem; border-radius: 8px; }
+
+/* ---------- start ---------- */
+.start { padding-top: 9vh; }
+.start h1 { font-size: clamp(2.6rem, 9vw, 4.4rem); margin: 0.2em 0 0.25em; letter-spacing: -0.01em; }
+.start h1 span { color: var(--orange); }
+.lede { font-size: 1.15rem; color: var(--text); max-width: 36em; margin: 0 0 1.4em; }
+.rules {
+  list-style: none; padding: 0; margin: 0 0 1.8em;
+  display: grid; gap: 0.55em;
+}
+.rules li {
+  display: grid; grid-template-columns: 1.6em 1fr; align-items: baseline;
+  color: var(--muted);
+}
+.rules li::before { content: "▪"; color: var(--orange); font-size: 0.9em; }
+.rules li b { color: var(--text); }
+.team-form { display: flex; gap: 10px; flex-wrap: wrap; }
+.team-form label { width: 100%; font-weight: 700; font-size: 0.95rem; }
+.team-form input {
+  flex: 1 1 220px; min-width: 0;
+  font: inherit; font-size: 1.1rem;
+  padding: 0.75em 0.9em;
+  border-radius: 10px;
+  border: 1.5px solid var(--line-strong);
+  background: rgba(3, 16, 31, 0.75);
+  color: var(--text);
+}
+.resume {
+  border: 1.5px solid var(--line-strong);
+  background: rgba(0, 36, 78, 0.6);
+  border-radius: 14px;
+  padding: 1em 1.1em;
+  margin-bottom: 1.4em;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+}
+.resume p { margin: 0; flex: 1 1 240px; }
+.foot { margin-top: 3em; color: var(--muted); font-size: 0.85rem; }
+
+/* ---------- top bar ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 5;
+  background: rgba(6, 21, 40, 0.92);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+}
+.topbar .wrap { display: flex; align-items: center; gap: 12px; padding-top: 10px; padding-bottom: 10px; }
+.topbar .brand { font-weight: 700; letter-spacing: 0.12em; font-size: 0.78rem; text-transform: uppercase; color: var(--muted); }
+.topbar .team { margin-left: auto; font-weight: 700; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clock {
+  font-family: var(--mono); font-weight: 700; font-size: 1.05rem;
+  background: var(--code-bg); border: 1px solid var(--line-strong);
+  border-radius: 8px; padding: 0.15em 0.55em;
+}
+.clock small { color: var(--citrus); font-weight: 400; margin-left: 0.35em; }
+
+.doors { display: flex; gap: 8px; margin: 22px 0 18px; }
+.door-dot {
+  flex: 1; height: 38px; border-radius: 7px 7px 2px 2px;
+  border: 1.5px solid var(--line-strong);
+  display: grid; place-items: center;
+  font-family: var(--mono); font-weight: 700; font-size: 0.8rem; color: var(--muted);
+  position: relative;
+}
+.door-dot.done { background: var(--orange); border-color: var(--orange); color: #00244E; }
+.door-dot.here { border-color: var(--sky); color: var(--text); box-shadow: 0 0 0 3px rgba(138, 204, 228, 0.18); }
+@media (prefers-reduced-motion: no-preference) {
+  .door-dot.here { animation: pulse 1.8s ease-in-out infinite; }
+}
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(138, 204, 228, 0.08); } }
+
+/* ---------- room ---------- */
+.room-head .kicker { display: block; margin-bottom: 0.35em; }
+.room-head h2 { font-size: clamp(1.8rem, 6vw, 2.5rem); }
+.story { color: var(--muted); margin: 0.45em 0 1.1em; }
+.note {
+  border-left: 4px solid var(--sky);
+  background: rgba(138, 204, 228, 0.08);
+  border-radius: 0 10px 10px 0;
+  padding: 0.65em 0.9em;
+  margin: 0 0 14px;
+  font-size: 0.97rem;
+}
+.code {
+  background: var(--code-bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 12px 0;
+  margin: 0 0 14px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.code .row { display: flex; padding-right: 16px; }
+/* Long lines wrap under their own line number (hanging indent) instead of scrolling. */
+.code .lc { flex: 1; min-width: 0; white-space: pre-wrap; padding-left: 4ch; text-indent: -4ch; }
+.code.nonum .row { padding-left: 16px; }
+.code .ln {
+  flex: none; width: 3.1em; padding-right: 1em; text-align: right;
+  color: #56687A; user-select: none; -webkit-user-select: none;
+}
+.code .hot { background: rgba(237, 169, 65, 0.16); }
+.t-type { color: var(--tok-type); font-weight: 700; }
+.t-id { color: var(--tok-id); font-weight: 700; }
+.t-val { color: var(--tok-val); font-weight: 700; }
+.t-com { color: var(--tok-com); font-style: italic; }
+@media (max-width: 520px) {
+  .topbar .brand { display: none; }
+  .topbar .team { max-width: 60vw; margin-left: 0; margin-right: auto; }
+}
+@media (max-width: 480px) {
+  .code { font-size: 13px; }
+  .code .ln { width: 2.6em; padding-right: 0.8em; }
+}
+.snips { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.snip h3 {
+  font-size: 0.95rem; margin: 0 0 6px;
+  display: flex; align-items: center; gap: 0.5em;
+}
+.snip h3 b {
+  display: inline-grid; place-items: center;
+  width: 1.7em; height: 1.7em; border-radius: 6px;
+  background: var(--surface-2); color: var(--orange); font-family: var(--mono);
+}
+.snip .code { margin: 0; font-size: 14px; }
+
+.ask {
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 16px;
+  margin-top: 6px;
+}
+.ask .q { font-weight: 700; font-size: 1.08rem; margin: 0 0 12px; }
+.lock-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.lock-row input {
+  flex: 1 1 200px; min-width: 0;
+  font-family: var(--mono); font-weight: 700;
+  font-size: 1.6rem; letter-spacing: 0.22em; text-transform: uppercase;
+  padding: 0.35em 0.6em;
+  border-radius: 10px;
+  border: 2px solid var(--line-strong);
+  background: var(--code-bg); color: var(--text);
+}
+.lock-row input::placeholder { color: #3E536A; letter-spacing: 0.12em; }
+.lock-row .btn { flex: 0 0 auto; }
+.format { color: var(--muted); font-size: 0.9rem; margin: 8px 0 0; }
+.hint-zone { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.hint-zone .tap { color: var(--citrus); font-size: 0.9rem; }
+.hint-box {
+  margin-top: 12px; border: 1.5px solid var(--citrus);
+  background: rgba(237, 169, 65, 0.1); border-radius: 10px;
+  padding: 0.7em 0.9em;
+}
+.hint-box .kicker { color: var(--citrus); display: block; margin-bottom: 0.2em; }
+.shake { animation: shake 0.4s ease; }
+@keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+
+/* ---------- overlays ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 20;
+  display: grid; place-items: center;
+  padding: 16px;
+  background: rgba(2, 8, 16, 0.86);
+  overflow-y: auto;
+}
+.term {
+  width: min(560px, 100%);
+  background: #000; border: 1px solid #333; border-radius: 12px;
+  overflow: hidden; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+}
+.term-bar { display: flex; gap: 6px; align-items: center; padding: 9px 12px; background: #1C1C1C; }
+.term-bar i { width: 11px; height: 11px; border-radius: 50%; background: #444; }
+.term-bar em { margin-left: 8px; color: #888; font-size: 0.8rem; font-style: normal; font-family: var(--mono); }
+.term pre { margin: 0; padding: 18px 18px 6px; font-family: var(--mono); font-size: 15px; line-height: 1.6; white-space: pre-wrap; color: #E8E8E8; }
+.term pre .prompt { color: var(--green); }
+.term pre .err { color: var(--citrus); font-weight: 700; }
+.term p { margin: 0; padding: 6px 18px 0; color: #BDBDBD; }
+.term p b { color: #fff; font-family: var(--mono); }
+.bar { margin: 14px 18px 18px; height: 6px; border-radius: 3px; background: #262626; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 100%; background: var(--citrus); transform-origin: left; }
+
+.cleared-card {
+  width: min(640px, 100%);
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+.cleared-card h2 { font-size: clamp(1.6rem, 5vw, 2.1rem); margin: 0.25em 0 0.5em; }
+.cleared-card .why p { margin: 0 0 0.8em; }
+.cleared-card .why ul { margin: 0 0 0.8em; padding-left: 1.2em; }
+.cleared-card .why li { margin-bottom: 0.35em; }
+.cleared-card .code { font-size: 14px; }
+.answer-chip {
+  display: inline-block; font-family: var(--mono); font-weight: 700;
+  letter-spacing: 0.18em; color: #00244E; background: var(--green);
+  border-radius: 6px; padding: 0.05em 0.5em; margin-left: 0.4em;
+}
+.door-anim { position: relative; width: 120px; height: 150px; margin: 0 auto 18px; perspective: 600px; }
+.door-anim .frame { position: absolute; inset: 0; border: 4px solid var(--orange); border-bottom: 0; border-radius: 8px 8px 0 0; background: radial-gradient(circle at 50% 60%, rgba(255, 255, 255, 0.9), rgba(237, 169, 65, 0.35) 55%, transparent 75%); }
+.door-anim .leaf {
+  position: absolute; top: 4px; bottom: 0; left: 4px; right: 4px;
+  background: linear-gradient(180deg, #0F3F8C, #00244E);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px 4px 0 0;
+  transform-origin: left center;
+}
+.door-anim .leaf::after { content: ""; position: absolute; right: 12px; top: 52%; width: 9px; height: 9px; border-radius: 50%; background: var(--orange); }
+@media (prefers-reduced-motion: no-preference) {
+  .door-anim .leaf { animation: swing 0.9s 0.15s cubic-bezier(0.3, 0.7, 0.3, 1) forwards; }
+  .cleared-card { animation: rise 0.45s 0.35s ease both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .door-anim .leaf { transform: rotateY(-80deg); }
+}
+@keyframes swing { to { transform: rotateY(-80deg); } }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+
+/* ---------- escaped ---------- */
+.escaped { text-align: center; padding-top: 8vh; position: relative; }
+.escaped h1 { font-size: clamp(2.4rem, 9vw, 4.2rem); margin: 0.2em 0; }
+.escaped .teamname { font-size: clamp(1.6rem, 6vw, 2.6rem); font-weight: 700; color: var(--orange); word-break: break-word; }
+.escaped .final { font-family: var(--mono); font-weight: 700; font-size: clamp(3rem, 14vw, 6rem); line-height: 1; margin: 0.25em 0 0.1em; }
+.escaped .stats { color: var(--muted); }
+.escaped .hold { margin: 1.6em auto 0; max-width: 28em; border: 1.5px dashed var(--line-strong); border-radius: 12px; padding: 0.8em 1em; }
+.confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+.escaped > :not(.confetti) { position: relative; z-index: 1; }
+.confetti i { position: absolute; top: -20px; width: 10px; height: 14px; border-radius: 2px; opacity: 0.9; }
+@media (prefers-reduced-motion: no-preference) {
+  .confetti i { animation: fall linear forwards; }
+}
+@media (prefers-reduced-motion: reduce) { .confetti { display: none; } }
+@keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+
+/* ---------- host ---------- */
+.host { max-width: 1280px; margin: 0 auto; padding: 24px 24px 48px; }
+.host-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.host-head h1 { font-size: 2.2rem; }
+.host-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; }
+@media (max-width: 900px) { .host-grid { grid-template-columns: 1fr; } }
+.panel { background: rgba(0, 36, 78, 0.72); border: 1.5px solid var(--line-strong); border-radius: 18px; padding: 22px; }
+.countdown {
+  font-family: var(--mono); font-weight: 700;
+  font-size: clamp(5rem, 15vw, 12rem); line-height: 1;
+  text-align: center; margin: 0.15em 0 0.2em;
+  font-variant-numeric: tabular-nums;
+}
+.countdown.low { color: var(--citrus); }
+.countdown.over { color: var(--orange); }
+@media (prefers-reduced-motion: no-preference) {
+  .countdown.over { animation: blink 1s steps(2, start) infinite; }
+}
+@keyframes blink { to { visibility: hidden; } }
+.controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.join { display: grid; grid-template-columns: 200px 1fr; gap: 18px; align-items: center; }
+.join .qr { background: #fff; border-radius: 12px; padding: 8px; }
+.join .qr svg { display: block; width: 100%; height: auto; }
+.join .url { font-family: var(--mono); font-weight: 700; font-size: 1.25rem; }
+.board h2 { font-size: 1.3rem; margin: 22px 0 10px; }
+.board form { display: flex; gap: 8px; }
+.board input {
+  flex: 1; min-width: 0; font: inherit; padding: 0.55em 0.75em; border-radius: 9px;
+  border: 1.5px solid var(--line-strong); background: var(--code-bg); color: var(--text);
+}
+.board ol { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
+.board li {
+  display: grid; grid-template-columns: 2.4em 1fr auto auto; gap: 10px; align-items: center;
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 0.5em 0.7em;
+  font-size: 1.15rem;
+}
+.board li .place { font-family: var(--mono); font-weight: 700; color: var(--orange); font-size: 1.3rem; }
+.board li .at { font-family: var(--mono); color: var(--muted); font-size: 0.95rem; }
+.board li button { background: none; border: 0; color: var(--muted); font-size: 1.2rem; padding: 0 0.3em; }
+.roomlist { margin: 18px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; color: var(--muted); }
+.roomlist b { color: var(--text); font-family: var(--mono); margin-right: 0.5em; }
+</style>
+</head>
+<body>
+
+<!-- ============ start ============ -->
+<main id="v-start" class="wrap start" hidden>
+  <span class="kicker">CPSC 121A · Session 17</span>
+  <h1>Escape the <span>Heap</span></h1>
+  <p class="lede">Your team is trapped inside a running program. Five rooms and one exit stand between you and freedom, and every lock opens only with the exact answer a careful trace gives you.</p>
+  <ul class="rules">
+    <li><span><b>One device per team.</b> A laptop shows the code best.</span></li>
+    <li><span><b>Brains only.</b> No compilers, no AI. Trace it like the exam.</span></li>
+    <li><span><b>Wrong code:</b> segmentation fault and a 20-second reboot.</span></li>
+    <li><span><b>Hints</b> are there if you're stuck. Each one adds 1:00 to your time.</span></li>
+    <li><span><b>First team out wins.</b> Hold up your screen when you escape.</span></li>
+  </ul>
+  <div id="resume" class="resume" hidden>
+    <p>Welcome back, <b id="resume-team"></b>. You're in <b id="resume-room"></b>.</p>
+    <button id="resume-go" class="btn" type="button">Keep going</button>
+    <button id="resume-reset" class="btn ghost small" type="button">Start over</button>
+  </div>
+  <form id="team-form" class="team-form" autocomplete="off">
+    <label for="team-name">Team name</label>
+    <input id="team-name" maxlength="24" placeholder="e.g. The Dangling Pointers" required>
+    <button class="btn" type="submit">Enter the heap</button>
+  </form>
+  <p class="foot">CPSC 121A · Cal State Fullerton</p>
+</main>
+
+<!-- ============ room ============ -->
+<div id="v-room" hidden>
+  <header class="topbar">
+    <div class="wrap">
+      <span class="brand">Escape the Heap</span>
+      <span class="team" id="top-team"></span>
+      <span class="clock" id="top-clock" aria-label="Your time">0:00</span>
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="doors" id="doors" aria-hidden="true"></div>
+    <section class="room-head">
+      <span class="kicker" id="room-kicker"></span>
+      <h2 id="room-title"></h2>
+      <p class="story" id="room-story"></p>
+    </section>
+    <div id="room-body"></div>
+    <form id="lock" class="ask" autocomplete="off">
+      <p class="q" id="room-ask"></p>
+      <div class="lock-row">
+        <label for="code" class="sr" hidden>Lock code</label>
+        <input id="code" spellcheck="false" autocapitalize="characters" autocorrect="off" aria-label="Lock code">
+        <button class="btn" type="submit" id="try">Try the lock</button>
+      </div>
+      <p class="format" id="room-format"></p>
+      <div class="hint-zone">
+        <button class="btn ghost small" type="button" id="hint-btn">Need a hint? +1:00</button>
+        <span class="tap" id="hint-tap" hidden>Tap again to open it. It adds 1:00 to your time.</span>
+      </div>
+      <div class="hint-box" id="hint-box" hidden><span class="kicker">Hint</span><span id="hint-text"></span></div>
+    </form>
+  </main>
+</div>
+
+<!-- ============ crash overlay ============ -->
+<div id="o-crash" class="overlay" hidden role="alertdialog" aria-live="assertive" aria-label="Wrong code">
+  <div class="term">
+    <div class="term-bar"><i></i><i></i><i></i><em>bash</em></div>
+    <pre id="crash-text"></pre>
+    <p>That's not the code. Rebooting in <b id="crash-left">20</b> seconds.</p>
+    <div class="bar"><i id="crash-bar"></i></div>
+  </div>
+</div>
+
+<!-- ============ cleared overlay ============ -->
+<div id="o-cleared" class="overlay" hidden role="dialog" aria-labelledby="cleared-title">
+  <div style="width: min(640px, 100%);">
+    <div class="door-anim" aria-hidden="true"><div class="frame"></div><div class="leaf"></div></div>
+    <div class="cleared-card">
+      <span class="kicker" id="cleared-kicker"></span>
+      <h2 id="cleared-title"></h2>
+      <div class="why" id="cleared-why"></div>
+      <button class="btn" type="button" id="cleared-next"></button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ escaped ============ -->
+<main id="v-escaped" class="wrap escaped" hidden>
+  <div class="confetti" id="confetti" aria-hidden="true"></div>
+  <span class="kicker">CPSC 121A · Session 17</span>
+  <h1>You escaped the heap.</h1>
+  <div class="teamname" id="esc-team"></div>
+  <div class="final" id="esc-time"></div>
+  <p class="stats" id="esc-stats"></p>
+  <p class="hold">Every owner let go, the count hit 0, and nothing leaked. <b>Hold this screen up</b> so your instructor can see it.</p>
+  <p style="margin-top: 2.4em;"><button class="btn ghost small" type="button" id="esc-reset">Start over (new team)</button></p>
+</main>
+
+<!-- ============ host ============ -->
+<main id="v-host" class="host" hidden>
+  <div class="host-head">
+    <span class="kicker">CPSC 121A · Session 17</span>
+    <h1>Escape the Heap</h1>
+  </div>
+  <div class="host-grid">
+    <section class="panel">
+      <div class="countdown" id="cd" aria-live="off">20:00</div>
+      <div class="controls">
+        <button class="btn" type="button" id="cd-go">Start</button>
+        <button class="btn ghost" type="button" id="cd-minus">−1 min</button>
+        <button class="btn ghost" type="button" id="cd-plus">+1 min</button>
+        <button class="btn ghost" type="button" id="cd-reset">Reset</button>
+      </div>
+      <ul class="roomlist">
+        <li><b>1</b>The Boba Line · pointers</li>
+        <li><b>2</b>Too Many Tabs · stack and heap</li>
+        <li><b>3</b>Crash, Leak, or Fine? · new, delete, shared_ptr</li>
+        <li><b>4</b>Group Project · counting owners</li>
+        <li><b>5</b>The Highlight Reel · find the leak</li>
+        <li><b>EXIT</b>The fix</li>
+      </ul>
+    </section>
+    <section class="panel board">
+      <div class="join">
+        <div class="qr"><svg viewBox="0 0 37 37" class="segno"><path fill="#fff" d="M0 0h37v37h-37z"/><path class="qrline" stroke="#00244e" d="M2 2.5h7m1 0h1m3 0h1m1 0h2m1 0h1m1 0h1m2 0h2m2 0h7m-33 1h1m5 0h1m1 0h2m1 0h1m2 0h2m2 0h2m1 0h4m1 0h1m5 0h1m-33 1h1m1 0h3m1 0h1m1 0h1m1 0h2m1 0h1m1 0h4m1 0h1m3 0h1m1 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h2m1 0h2m4 0h2m4 0h1m2 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h3m1 0h3m1 0h1m1 0h1m1 0h4m2 0h1m1 0h3m1 0h1m-33 1h1m5 0h1m2 0h1m4 0h1m2 0h3m2 0h2m2 0h1m5 0h1m-33 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-25 1h1m1 0h3m1 0h1m1 0h4m1 0h1m1 0h1m-23 1h2m1 0h1m1 0h2m1 0h1m1 0h1m2 0h4m2 0h5m1 0h1m1 0h5m-33 1h1m4 0h1m1 0h1m4 0h1m1 0h2m1 0h1m2 0h1m1 0h1m1 0h4m3 0h2m-31 1h1m2 0h2m1 0h1m3 0h1m1 0h3m1 0h1m1 0h1m3 0h1m1 0h2m2 0h3m-33 1h6m1 0h1m1 0h1m1 0h4m2 0h6m5 0h1m-29 1h2m2 0h1m1 0h1m1 0h4m2 0h1m3 0h1m1 0h2m2 0h3m2 0h1m-28 1h1m2 0h1m3 0h2m1 0h2m2 0h4m1 0h1m2 0h1m1 0h1m3 0h1m1 0h1m-31 1h5m3 0h2m4 0h2m4 0h1m1 0h2m1 0h1m1 0h1m1 0h2m-33 1h1m3 0h2m3 0h2m1 0h2m3 0h2m1 0h2m1 0h2m1 0h2m1 0h1m1 0h1m-32 1h3m1 0h1m1 0h3m1 0h1m2 0h2m1 0h2m1 0h1m1 0h2m2 0h2m-27 1h1m1 0h1m2 0h1m1 0h1m1 0h1m1 0h1m1 0h6m1 0h1m1 0h1m1 0h1m1 0h2m3 0h2m-33 1h1m2 0h4m8 0h3m4 0h1m3 0h1m3 0h3m-33 1h1m1 0h3m6 0h5m1 0h3m1 0h1m2 0h2m1 0h2m2 0h2m-33 1h1m1 0h2m1 0h2m3 0h2m3 0h1m1 0h1m1 0h3m1 0h1m1 0h2m2 0h1m1 0h1m-30 1h1m8 0h1m1 0h2m1 0h1m4 0h1m2 0h3m3 0h3m-33 1h1m1 0h3m1 0h2m1 0h2m2 0h2m1 0h3m1 0h3m3 0h2m1 0h1m1 0h2m-32 1h4m3 0h2m4 0h6m1 0h1m1 0h2m1 0h2m4 0h1m-33 1h1m1 0h2m1 0h2m1 0h2m4 0h1m1 0h1m1 0h1m1 0h9m-21 1h2m1 0h1m2 0h1m1 0h1m3 0h2m1 0h2m3 0h2m1 0h2m-33 1h7m1 0h3m1 0h1m1 0h1m2 0h1m5 0h2m1 0h1m1 0h1m1 0h1m1 0h1m-33 1h1m5 0h1m2 0h2m1 0h1m1 0h1m2 0h2m1 0h3m1 0h1m3 0h1m2 0h2m-33 1h1m1 0h3m1 0h1m1 0h2m1 0h1m2 0h2m5 0h1m2 0h6m2 0h1m-33 1h1m1 0h3m1 0h1m3 0h4m1 0h1m4 0h1m7 0h1m2 0h2m-33 1h1m1 0h3m1 0h1m1 0h1m3 0h1m3 0h1m1 0h1m2 0h1m1 0h1m4 0h3m1 0h1m-33 1h1m5 0h1m1 0h2m1 0h3m2 0h1m1 0h2m1 0h1m1 0h2m3 0h1m2 0h1m-32 1h7m2 0h1m2 0h1m1 0h3m3 0h2m2 0h3m1 0h2m1 0h2"/></svg></div>
+        <div>
+          <span class="kicker">Join</span>
+          <div class="url">smoran02.github.io/<wbr>escape-the-heap</div>
+          <p style="color: var(--muted); margin: 0.4em 0 0;">One device per team. Brains only.</p>
+        </div>
+      </div>
+      <h2>Escaped</h2>
+      <form id="board-form">
+        <input id="board-name" placeholder="Team name, then Enter" maxlength="40" aria-label="Escaped team name">
+        <button class="btn small" type="submit">Add</button>
+      </form>
+      <ol id="board"></ol>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+'use strict';
+
+const SALT = 'eth17';
+const KEY = 'escape-the-heap-v1';
+const HOST_KEY = 'escape-the-heap-host-v1';
+const LOCKOUT_MS = 20000;
+const HINT_MS = 60000;
+
+// Storage can be missing (private windows, blocked site data): every access is guarded.
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* in-memory only */ } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) { /* nothing to clear */ } },
+};
+
+// Plain SHA-256 so lock checks work on file:// and old phones without crypto.subtle.
+function sha256(text) {
+  const frac = (x) => ((x - Math.floor(x)) * 0x100000000) >>> 0;
+  const H = [], K = [];
+  for (let n = 2; K.length < 64; n++) {
+    let prime = true;
+    for (let d = 2; d * d <= n; d++) if (n % d === 0) { prime = false; break; }
+    if (!prime) continue;
+    if (H.length < 8) H.push(frac(Math.sqrt(n)));
+    K.push(frac(Math.cbrt(n)));
+  }
+  const msg = Array.from(new TextEncoder().encode(text));
+  const bitLen = msg.length * 8;
+  msg.push(0x80);
+  while (msg.length % 64 !== 56) msg.push(0);
+  for (let s = 56; s >= 0; s -= 8) msg.push(s >= 32 ? 0 : (bitLen >>> s) & 255);
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+  const W = new Array(64);
+  for (let i = 0; i < msg.length; i += 64) {
+    for (let t = 0; t < 16; t++) {
+      W[t] = (msg[i + 4 * t] << 24) | (msg[i + 4 * t + 1] << 16) | (msg[i + 4 * t + 2] << 8) | msg[i + 4 * t + 3];
+    }
+    for (let t = 16; t < 64; t++) {
+      const s0 = rotr(W[t - 15], 7) ^ rotr(W[t - 15], 18) ^ (W[t - 15] >>> 3);
+      const s1 = rotr(W[t - 2], 17) ^ rotr(W[t - 2], 19) ^ (W[t - 2] >>> 10);
+      W[t] = (W[t - 16] + s0 + W[t - 7] + s1) | 0;
+    }
+    let [a, b, c, d, e, f, g, h] = H;
+    for (let t = 0; t < 64; t++) {
+      const t1 = (h + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + W[t]) | 0;
+      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    [a, b, c, d, e, f, g, h].forEach((v, j) => { H[j] = (H[j] + v) | 0; });
+  }
+  return H.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('');
+}
+
+// ------------------------------------------------------------------ rooms
+
+const CHAT_CODE = String.raw`void Preview(std::shared_ptr<Chat> chat) {
+  std::cout << chat.use_count() << "\n";
+}
+
+int main() {
+  std::shared_ptr<Chat> you =
+      std::make_shared<Chat>("Group Project");
+  std::shared_ptr<Chat> jay = you;
+  std::cout << you.use_count() << "\n";
+  {
+    std::shared_ptr<Chat> mo = jay;
+    Preview(mo);
+  }
+  std::cout << you.use_count() << "\n";
+  you = nullptr;
+  std::cout << jay.use_count() << "\n";
+  jay = nullptr;
+  std::cout << "done\n";
+  return 0;
+}`;
+
+const CLIP_CODE = String.raw`void PostHighlight(const std::string& filename, int seconds) {
+  Clip* clip = new Clip{filename, seconds};
+  if (clip->GetSeconds() > 60) {
+    std::cout << "Too long to post\n";
+    return;
+  }
+  clip->Upload();
+  delete clip;
+}
+
+int main() {
+  PostHighlight("clutch_ace.mp4", 25);
+  PostHighlight("full_match.mp4", 2400);
+  return 0;
+}`;
+
+const CLIP_NOTE = 'Assume <code>Clip</code> exists: its constructor takes a filename and a length in seconds, <code>GetSeconds</code> and <code>Upload</code> do what they say, and its destructor prints <code>(filename freed)</code>.';
+
+const ROOMS = [
+  {
+    id: 'r1', label: '1', kicker: 'Room 1 of 5 · Session 15 · Pointers',
+    title: 'The Boba Line',
+    story: 'A boba shop tracks how many cups of each flavor are left. Two pointers, one that moves and one that stays put.',
+    blocks: [{ code: String.raw`int taro = 5;
+int matcha = 7;
+int* order = &taro;
+int* next = order;
+*order = 6;
+order = &matcha;
+*next += 2;
+std::cout << taro << " ";
+std::cout << matcha << " ";
+std::cout << *order << "\n";`, ids: ['taro', 'matcha', 'order', 'next'] }],
+    ask: 'What does it print? Enter the three numbers in order.',
+    format: 'Digits only. Spaces are fine.', numeric: true, placeholder: '0 0 0',
+    hashes: ['cc167720aaf3c818241a4c66550cddb4a27826925ab7a1c8ee971e35783aa62e'],
+    hint: 'Line 4 copies the <em>address</em> stored in <code>order</code>, so <code>next</code> points at <code>taro</code> too. Line 6 moves <code>order</code>. Does that move <code>next</code>?',
+    answer: '8 7 7',
+    why: `<p>Line 4 copied taro's address into <code>next</code>. Line 6 moved <code>order</code> to matcha, but <code>next</code> stayed on taro, so line 7 added 2 to taro (6 becomes 8). <code>*order</code> follows <code>order</code> to matcha: 7.</p>
+          <p><code>p = ...</code> moves the pointer. <code>*p = ...</code> changes what it points at. Different jobs.</p>`,
+  },
+  {
+    id: 'r2', label: '2', kicker: 'Room 2 of 5 · Session 16 · Stack and heap',
+    title: 'Too Many Tabs',
+    story: 'Your browser is eating all your RAM again. Some tabs close when you expect them to. One never does.',
+    note: '<code>Tab</code>\'s constructor prints <code>open N</code>. Its destructor prints <code>close N</code>.',
+    blocks: [{ code: String.raw`int main() {
+  Tab t1{1};
+  Tab* t2 = new Tab{2};
+  {
+    Tab t3{3};
+    Tab* t4 = new Tab{4};
+  }
+  delete t2;
+  std::cout << "end\n";
+  return 0;
+}`, ids: ['t1', 't2', 't3', 't4'] }],
+    ask: 'List the tab numbers in the order they print close, then the number of the tab that never closes.',
+    format: 'Four digits, e.g. 4 3 2 1 means close 4, close 3, close 2, and Tab 1 never closes.', numeric: true, placeholder: '0 0 0 0',
+    hashes: ['d10e561f57e2d84e15bb2fe0aa157303b9df116776354f23d00f7b1d91e75b9c'],
+    hint: 'A stack object closes at its closing brace. A heap object closes only when someone deletes it. Find each Tab\'s brace or <code>delete</code>.',
+    answer: '3 2 1 · 4',
+    why: `<ul>
+            <li><b>close 3</b> at line 7: <code>t3</code> lives on the stack, so its brace destroys it.</li>
+            <li><b>close 2</b> at line 8: the <code>delete</code>.</li>
+            <li><b>close 1</b> at main's closing brace, after <code>end</code> prints.</li>
+            <li><b>Tab 4 never closes.</b> The pointer <code>t4</code> died at line 7, but Tab 4 is still on the heap with no address left to reach it: a leak.</li>
+          </ul>
+          <p>Lose the address, lose the memory.</p>`,
+  },
+  {
+    id: 'r3', label: '3', kicker: 'Room 3 of 5 · Sessions 16 and 17',
+    title: 'Crash, Leak, or Fine?',
+    story: 'Five tiny programs, each one the whole body of main. Lobby is the Party Lobby class from the demo.',
+    snippets: [
+      { tag: 'A', code: String.raw`Lobby* a = new Lobby{"Ranked"};
+a = new Lobby{"Casual"};
+delete a;`, ids: ['a'] },
+      { tag: 'B', code: String.raw`Lobby* g = new Lobby{"Ranked"};
+Lobby* h = g;
+delete h;`, ids: ['g', 'h'] },
+      { tag: 'C', code: String.raw`Lobby* b = new Lobby{"Ranked"};
+Lobby* c = b;
+delete b;
+delete c;`, ids: ['b', 'c'] },
+      { tag: 'D', code: String.raw`std::shared_ptr<Lobby> d =
+    std::make_shared<Lobby>("Ranked");
+std::shared_ptr<Lobby> e = d;
+d = nullptr;
+e->Start();`, ids: ['d', 'e'] },
+      { tag: 'E', code: String.raw`std::shared_ptr<Lobby> f =
+    std::make_shared<Lobby>("Ranked");
+f = nullptr;
+f->Start();`, ids: ['f'] },
+    ],
+    ask: 'For A to E in order, enter L (leak), C (crash), or F (fine).',
+    format: 'Five letters, e.g. L L C C F.', numeric: false, placeholder: '? ? ? ? ?',
+    hashes: ['507f002a15614c5a78bf31b7250e7ccff4129303a3c098363f22b6268695e18e'],
+    hint: 'Count the <code>new</code>s and <code>delete</code>s. The rule is one delete per <code>new</code>, not one per pointer. And <code>-&gt;</code> on an empty pointer has nowhere to go.',
+    answer: 'L F C F C',
+    why: `<ul>
+            <li><b>A, leak.</b> Line 2 moved <code>a</code> off the Ranked lobby before anyone deleted it.</li>
+            <li><b>B, fine.</b> One <code>new</code>, one <code>delete</code>. Deleting through a copy of the address counts.</li>
+            <li><b>C, crash.</b> <code>b</code> and <code>c</code> hold the same address, so it's deleted twice: a double free.</li>
+            <li><b>D, fine.</b> <code>e</code> still owns the lobby after <code>d</code> lets go (count 1), so <code>e-&gt;Start()</code> works.</li>
+            <li><b>E, crash.</b> <code>f</code> was the only owner. Letting go deleted the lobby and left <code>f</code> holding <code>nullptr</code>, and following it crashes.</li>
+          </ul>`,
+  },
+  {
+    id: 'r4', label: '4', kicker: 'Room 4 of 5 · Session 17 · Counting owners',
+    title: 'Group Project',
+    story: 'A group chat stays around as long as anyone is still in it.',
+    note: '<code>Chat</code>\'s destructor prints <code>Group Project deleted</code>.',
+    blocks: [{ code: CHAT_CODE, ids: ['you', 'jay', 'mo', 'chat'] }],
+    ask: 'Enter the four numbers it prints, in order, then the line number where the Chat is deleted.',
+    format: 'Digits only, e.g. 1 2 3 4 then 20.', numeric: true, placeholder: '0 0 0 0 00',
+    hashes: ['ed8a76154f248aa91c8decfbedf84ab3224dbc37188d5fed59c8e3a4fc81dc9c'],
+    hint: 'Line 12 passes <code>mo</code> by value, so the parameter <code>chat</code> is one more owner while Preview runs (Session 03). It\'s destroyed at line 3, and <code>mo</code> is destroyed at line 13\'s brace.',
+    answer: '2 4 2 1 · line 17',
+    why: `<p>It prints <b>2, 4, 2, 1</b>, then <code>Group Project deleted</code>, then <code>done</code>.</p>
+          <ul>
+            <li>Line 9: <code>you</code> and <code>jay</code>, 2 owners.</li>
+            <li>Line 12: Preview's parameter is a copy of <code>mo</code>, so line 2 prints 4. It's destroyed at line 3.</li>
+            <li>Line 13's brace removes <code>mo</code>: 2. Line 15 lets <code>you</code> go: 1.</li>
+            <li>Line 17: <code>jay</code> is the last one out, so the Chat is deleted right there, before <code>done</code>.</li>
+          </ul>`,
+  },
+  {
+    id: 'r5', label: '5', kicker: 'Room 5 of 5 · Sessions 16 and 17 · Leaks',
+    title: 'The Highlight Reel',
+    story: 'Short game clips get posted. Long ones get rejected. This function even has a delete. It still leaks.',
+    note: CLIP_NOTE,
+    blocks: [{ code: CLIP_CODE, ids: ['clip', 'filename', 'seconds'] }],
+    ask: 'How many Clips are created? How many are deleted? On which line does the leaking call leave PostHighlight?',
+    format: 'Three numbers in that order, e.g. 3 3 9.', numeric: true, placeholder: '0 0 0',
+    hashes: ['14804b1617d9fb4ffcfa1f8ca385b3c830c3df85ea705ca0d2efc4578b325d73'],
+    hint: 'Each call runs <code>new</code> once. Which call is over 60 seconds, and what doesn\'t run after line 5?',
+    answer: '2 1 5',
+    why: `<p><b>2 created</b>, one per call. <b>1 deleted</b>: only the 25-second clip reaches line 8.</p>
+          <p>The 2400-second clip takes line 5's early <code>return</code>, so line 8's <code>delete</code> never runs for it. A careful programmer still leaked.</p>`,
+  },
+  {
+    id: 'exit', label: 'EXIT', kicker: 'The Exit · Session 17 · The fix',
+    title: 'Make It Leak-Proof',
+    story: 'Same function. Rewrite it with std::shared_ptr and the door opens.',
+    note: CLIP_NOTE,
+    blocks: [{ code: CLIP_CODE, ids: ['clip', 'filename', 'seconds'] }],
+    ask: 'Which line do you rewrite, and which line do you delete entirely?',
+    format: 'Two line numbers: the rewritten one, then the deleted one.', numeric: true, placeholder: '0 0',
+    hashes: ['2272d6a7518d8819e66195748a3f840525cdae8a7393f6cce22e126637dd2dea',
+             '96d3012101bbc3f6b95af00ce76eb8875dea85cf6b8dc6fd8603808d7774c2d4'],
+    hint: '<code>make_shared</code> replaces <code>new</code>. Once a smart pointer owns the Clip, which line is nobody\'s job anymore?',
+    answer: 'rewrite 2 · delete 8',
+    why: `<p>Line 2 becomes <code>make_shared</code>, line 8 disappears, and the <code>-&gt;</code> lines don't change:</p>
+          __FIX__
+          <p>Every way out of a function destroys its locals, <code>return</code> included, so both Clips are freed now.</p>`,
+    whyCode: String.raw`std::shared_ptr<Clip> clip =
+    std::make_shared<Clip>(filename, seconds);`,
+  },
+];
+
+// ------------------------------------------------------------------ code rendering
+
+const KEYWORDS = new Set(['int', 'void', 'class', 'public', 'private', 'return', 'new', 'delete',
+  'if', 'else', 'const', 'long', 'bool', 'double', 'char', 'auto', 'nullptr',
+  'Tab', 'Lobby', 'Chat', 'Clip', 'string']);
+
+function esc(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function highlight(line, ids) {
+  const re = /(\/\/.*$)|("(?:\\.|[^"\\])*")|(\b\d+\b)|([A-Za-z_]\w*)|([\s\S])/g;
+  let out = '';
+  let m;
+  while ((m = re.exec(line)) !== null) {
+    if (m[1]) out += `<span class="t-com">${esc(m[1])}</span>`;
+    else if (m[2] || m[3]) out += `<span class="t-val">${esc(m[0])}</span>`;
+    else if (m[4] && KEYWORDS.has(m[4])) out += `<span class="t-type">${m[4]}</span>`;
+    else if (m[4] && ids.includes(m[4])) out += `<span class="t-id">${m[4]}</span>`;
+    else out += esc(m[0]);
+  }
+  return out;
+}
+
+function codeBlock(code, ids, numbered = true) {
+  const rows = code.split('\n').map((line, i) =>
+    `<div class="row">${numbered ? `<span class="ln">${i + 1}</span>` : ''}<span class="lc">${highlight(line, ids) || ' '}</span></div>`);
+  return `<div class="code${numbered ? '' : ' nonum'}" role="region" aria-label="Code" tabindex="0">${rows.join('')}</div>`;
+}
+
+// ------------------------------------------------------------------ player state
+
+const $ = (id) => document.getElementById(id);
+let state = null;
+let tick = null;
+
+function fresh(team) {
+  return { team, startedAt: Date.now(), room: 0, hints: [], wrong: 0, lockUntil: 0, finishedAt: null, cleared: null };
+}
+function save() { if (state) store.set(KEY, state); }
+
+function elapsedMs() {
+  const end = state.finishedAt || Date.now();
+  return Math.max(0, end - state.startedAt) + state.hints.length * HINT_MS;
+}
+function fmt(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+function normalize(raw) { return raw.toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+
+function show(view) {
+  ['v-start', 'v-room', 'v-escaped', 'v-host'].forEach((id) => { $(id).hidden = id !== view; });
+  window.scrollTo(0, 0);
+}
+
+function renderStart() {
+  show('v-start');
+  const saved = store.get(KEY);
+  if (saved && saved.team) {
+    $('resume').hidden = false;
+    $('resume-team').textContent = saved.team;
+    $('resume-room').textContent = saved.finishedAt ? 'the open air (you escaped)'
+      : saved.room >= ROOMS.length - 1 ? 'front of the exit' : `Room ${saved.room + 1}`;
+  } else {
+    $('resume').hidden = true;
+  }
+}
+
+function renderDoors() {
+  $('doors').innerHTML = ROOMS.map((r, i) => {
+    const cls = i < state.room ? 'done' : i === state.room ? 'here' : '';
+    return `<div class="door-dot ${cls}">${r.label}</div>`;
+  }).join('');
+}
+
+function renderRoom() {
+  if (state.finishedAt) { renderEscaped(); return; }
+  if (state.cleared !== null) { showCleared(state.cleared); }
+  show('v-room');
+  const r = ROOMS[state.room];
+  $('top-team').textContent = state.team;
+  renderDoors();
+  $('room-kicker').textContent = r.kicker;
+  $('room-title').textContent = r.title;
+  $('room-story').textContent = r.story;
+  let body = r.note ? `<p class="note">${r.note}</p>` : '';
+  if (r.blocks) body += r.blocks.map((b) => codeBlock(b.code, b.ids)).join('');
+  if (r.snippets) {
+    body += `<div class="snips">${r.snippets.map((s) =>
+      `<div class="snip"><h3><b>${s.tag}</b></h3>${codeBlock(s.code, s.ids)}</div>`).join('')}</div>`;
+  }
+  $('room-body').innerHTML = body;
+  $('room-ask').textContent = r.ask;
+  $('room-format').textContent = r.format;
+  const input = $('code');
+  input.value = '';
+  input.placeholder = r.placeholder;
+  input.setAttribute('inputmode', r.numeric ? 'numeric' : 'text');
+  const hinted = state.hints.includes(r.id);
+  $('hint-box').hidden = !hinted;
+  $('hint-text').innerHTML = hinted ? ` ${r.hint}` : '';
+  $('hint-btn').hidden = hinted;
+  $('hint-tap').hidden = true;
+  updateClock();
+  if (state.lockUntil > Date.now()) showCrash(false);
+}
+
+function updateClock() {
+  if (!state) return;
+  const n = state.hints.length;
+  const pen = n ? `<small>${n} hint${n === 1 ? '' : 's'}</small>` : '';
+  $('top-clock').innerHTML = fmt(elapsedMs()) + pen;
+}
+
+// ------------------------------------------------------------------ crash overlay
+
+const CRASHES = [
+  'Segmentation fault (core dumped)',
+  'free(): double free detected in tcache 2\nAborted (core dumped)',
+  'Segmentation fault (core dumped)',
+];
+let crashTimer = null;
+
+function showCrash(isNew) {
+  if (isNew) {
+    state.wrong += 1;
+    state.lockUntil = Date.now() + LOCKOUT_MS;
+    save();
+  }
+  const msg = CRASHES[state.wrong % CRASHES.length];
+  $('crash-text').innerHTML = `<span class="prompt">$</span> ./escape_the_heap --room ${esc(ROOMS[state.room].label.toLowerCase())}\n<span class="err">${esc(msg)}</span>`;
+  $('o-crash').hidden = false;
+  $('try').disabled = true;
+  clearInterval(crashTimer);
+  const step = () => {
+    const left = state.lockUntil - Date.now();
+    if (left <= 0) {
+      clearInterval(crashTimer);
+      $('o-crash').hidden = true;
+      $('try').disabled = false;
+      $('code').focus();
+      return;
+    }
+    $('crash-left').textContent = Math.ceil(left / 1000);
+    $('crash-bar').style.transform = `scaleX(${left / LOCKOUT_MS})`;
+  };
+  step();
+  crashTimer = setInterval(step, 100);
+}
+
+// ------------------------------------------------------------------ cleared overlay
+
+function showCleared(i) {
+  const r = ROOMS[i];
+  const last = i === ROOMS.length - 1;
+  $('cleared-kicker').innerHTML = `${last ? 'Exit unlocked' : `Room ${r.label} cleared`} <span class="answer-chip">${esc(r.answer)}</span>`;
+  $('cleared-title').textContent = last ? 'The door swings open.' : ['Nice trace.', 'Unlocked.', 'Clean run.', 'Count confirmed.', 'Leak found.'][i] || 'Unlocked.';
+  $('cleared-why').innerHTML = r.why.replace('__FIX__', r.whyCode ? codeBlock(r.whyCode, ['clip', 'filename', 'seconds'], false) : '');
+  $('cleared-next').textContent = last ? 'Walk out' : `On to ${ROOMS[i + 1].label === 'EXIT' ? 'the exit' : `Room ${ROOMS[i + 1].label}`}`;
+  const overlay = $('o-cleared');
+  // Restart the door animation on every open.
+  overlay.querySelectorAll('.leaf, .cleared-card').forEach((el) => {
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+  });
+  overlay.hidden = false;
+  overlay.scrollTop = 0;
+  setTimeout(() => $('cleared-next').focus({ preventScroll: true }), 600);
+}
+
+$('cleared-next').addEventListener('click', () => {
+  $('o-cleared').hidden = true;
+  state.cleared = null;
+  if (state.room >= ROOMS.length) {
+    state.finishedAt = state.finishedAt || Date.now();
+    save();
+    renderEscaped();
+    return;
+  }
+  save();
+  renderRoom();
+});
+
+// ------------------------------------------------------------------ escaped
+
+function renderEscaped() {
+  clearInterval(tick);
+  show('v-escaped');
+  $('esc-team').textContent = state.team;
+  $('esc-time').textContent = fmt(elapsedMs());
+  const h = state.hints.length;
+  const w = state.wrong;
+  $('esc-stats').textContent = `${h} hint${h === 1 ? '' : 's'} (included) · ${w} wrong code${w === 1 ? '' : 's'}`;
+  const colors = ['#FF7900', '#8ACCE4', '#EDA941', '#F3CD47', '#2973B6', '#FFFFFF'];
+  $('confetti').innerHTML = Array.from({ length: 70 }, (_, i) => {
+    const left = Math.random() * 100;
+    const dur = 2.6 + Math.random() * 2.4;
+    const delay = Math.random() * 1.5;
+    return `<i style="left:${left}%;background:${colors[i % colors.length]};animation-duration:${dur}s;animation-delay:${delay}s"></i>`;
+  }).join('');
+}
+
+// ------------------------------------------------------------------ player events
+
+$('team-form').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const team = $('team-name').value.trim().slice(0, 24);
+  if (!team) return;
+  state = fresh(team);
+  save();
+  startTicking();
+  renderRoom();
+});
+
+$('resume-go').addEventListener('click', () => {
+  state = store.get(KEY);
+  if (!state) { renderStart(); return; }
+  startTicking();
+  renderRoom();
+});
+
+let resetArmed = 0;
+$('resume-reset').addEventListener('click', (ev) => {
+  if (Date.now() - resetArmed > 4000) {
+    resetArmed = Date.now();
+    ev.target.textContent = 'Tap again to erase your progress';
+    return;
+  }
+  store.del(KEY);
+  state = null;
+  ev.target.textContent = 'Start over';
+  renderStart();
+  $('team-name').focus();
+});
+
+$('esc-reset').addEventListener('click', (ev) => {
+  if (Date.now() - resetArmed > 4000) {
+    resetArmed = Date.now();
+    ev.target.textContent = 'Tap again to start a new team';
+    return;
+  }
+  store.del(KEY);
+  state = null;
+  ev.target.textContent = 'Start over (new team)';
+  $('confetti').innerHTML = '';
+  renderStart();
+});
+
+$('lock').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  if (!state || state.lockUntil > Date.now()) return;
+  const r = ROOMS[state.room];
+  const guess = normalize($('code').value);
+  if (!guess) return;
+  if (r.hashes.includes(sha256(`${SALT}:${r.id}:${guess}`))) {
+    const solved = state.room;
+    state.room += 1;
+    state.cleared = solved;
+    if (state.room >= ROOMS.length) state.finishedAt = Date.now();
+    save();
+    showCleared(solved);
+  } else {
+    const form = $('lock');
+    form.classList.remove('shake');
+    void form.offsetWidth;
+    form.classList.add('shake');
+    showCrash(true);
+  }
+});
+
+let hintArmed = 0;
+$('hint-btn').addEventListener('click', () => {
+  if (Date.now() - hintArmed > 4000) {
+    hintArmed = Date.now();
+    $('hint-tap').hidden = false;
+    setTimeout(() => { if (Date.now() - hintArmed >= 4000) $('hint-tap').hidden = true; }, 4100);
+    return;
+  }
+  const r = ROOMS[state.room];
+  if (!state.hints.includes(r.id)) state.hints.push(r.id);
+  save();
+  hintArmed = 0;
+  $('hint-tap').hidden = true;
+  $('hint-btn').hidden = true;
+  $('hint-text').innerHTML = ` ${r.hint}`;
+  $('hint-box').hidden = false;
+  updateClock();
+});
+
+function startTicking() {
+  clearInterval(tick);
+  tick = setInterval(updateClock, 500);
+}
+
+// ------------------------------------------------------------------ host
+
+let host = null;
+
+function hostSave() { store.set(HOST_KEY, host); }
+function hostRemaining() {
+  return host.running ? host.endsAt - Date.now() : host.remaining;
+}
+function renderCountdown() {
+  const left = hostRemaining();
+  const cd = $('cd');
+  if (left <= 0) {
+    cd.textContent = '0:00';
+    cd.className = 'countdown over';
+  } else {
+    const s = Math.ceil(left / 1000);
+    cd.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    cd.className = left <= 120000 ? 'countdown low' : 'countdown';
+  }
+  $('cd-go').textContent = host.running ? 'Pause' : (left < host.duration && left > 0 ? 'Resume' : 'Start');
+}
+function renderBoard() {
+  $('board').innerHTML = host.board.map((b, i) =>
+    `<li><span class="place">${i + 1}</span><span>${esc(b.team)}</span><span class="at">${b.at}</span><button type="button" data-i="${i}" aria-label="Remove ${esc(b.team)}">×</button></li>`).join('');
+}
+function toggleCountdown() {
+  if (host.running) {
+    host.remaining = Math.max(0, host.endsAt - Date.now());
+    host.running = false;
+  } else {
+    if (host.remaining <= 0) host.remaining = host.duration;
+    host.endsAt = Date.now() + host.remaining;
+    host.running = true;
+  }
+  hostSave();
+  renderCountdown();
+}
+function nudge(ms) {
+  if (host.running) host.endsAt += ms;
+  else host.remaining = Math.max(0, host.remaining + ms);
+  host.duration = Math.max(60000, host.duration + ms);
+  hostSave();
+  renderCountdown();
+}
+
+function initHost() {
+  host = store.get(HOST_KEY) || { duration: 20 * 60000, remaining: 20 * 60000, running: false, endsAt: 0, board: [] };
+  show('v-host');
+  document.title = 'Escape the Heap · Host';
+  renderCountdown();
+  renderBoard();
+  setInterval(renderCountdown, 250);
+  $('cd-go').addEventListener('click', toggleCountdown);
+  $('cd-plus').addEventListener('click', () => nudge(60000));
+  $('cd-minus').addEventListener('click', () => nudge(-60000));
+  $('cd-reset').addEventListener('click', () => {
+    host.running = false;
+    host.remaining = host.duration;
+    hostSave();
+    renderCountdown();
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.code === 'Space' && document.activeElement.tagName !== 'INPUT') {
+      ev.preventDefault();
+      toggleCountdown();
+    }
+  });
+  $('board-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const team = $('board-name').value.trim();
+    if (!team) return;
+    const used = host.duration - Math.max(0, hostRemaining());
+    host.board.push({ team, at: fmt(used) });
+    $('board-name').value = '';
+    hostSave();
+    renderBoard();
+  });
+  $('board').addEventListener('click', (ev) => {
+    const i = ev.target.getAttribute('data-i');
+    if (i === null) return;
+    host.board.splice(Number(i), 1);
+    hostSave();
+    renderBoard();
+  });
+}
+
+// ------------------------------------------------------------------ boot
+
+window.ESCAPE_TEST = { sha256, normalize, ROOMS, SALT };
+
+if (new URLSearchParams(location.search).has('host')) {
+  initHost();
+} else {
+  renderStart();
+}
+})();
+</script>
+</body>
+</html>
