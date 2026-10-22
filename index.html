@@ -322,47 +322,6 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
 @media (prefers-reduced-motion: reduce) { .confetti { display: none; } }
 @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
 
-/* ---------- host ---------- */
-.host { max-width: 1280px; margin: 0 auto; padding: 24px 24px 48px; }
-.host-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
-.host-head h1 { font-size: 2.2rem; }
-.host-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; }
-@media (max-width: 900px) { .host-grid { grid-template-columns: 1fr; } }
-.panel { background: rgba(0, 36, 78, 0.72); border: 1.5px solid var(--line-strong); border-radius: 18px; padding: 22px; }
-.countdown {
-  font-family: var(--mono); font-weight: 700;
-  font-size: clamp(5rem, 15vw, 12rem); line-height: 1;
-  text-align: center; margin: 0.15em 0 0.2em;
-  font-variant-numeric: tabular-nums;
-}
-.countdown.low { color: var(--citrus); }
-.countdown.over { color: var(--orange); }
-@media (prefers-reduced-motion: no-preference) {
-  .countdown.over { animation: blink 1s steps(2, start) infinite; }
-}
-@keyframes blink { to { visibility: hidden; } }
-.controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-.join { display: grid; grid-template-columns: 200px 1fr; gap: 18px; align-items: center; }
-.join .qr { background: #fff; border-radius: 12px; padding: 8px; }
-.join .qr svg { display: block; width: 100%; height: auto; }
-.join .url { font-family: var(--mono); font-weight: 700; font-size: 1.25rem; }
-.board h2 { font-size: 1.3rem; margin: 22px 0 10px; }
-.board form { display: flex; gap: 8px; }
-.board input {
-  flex: 1; min-width: 0; font: inherit; padding: 0.55em 0.75em; border-radius: 9px;
-  border: 1.5px solid var(--line-strong); background: var(--code-bg); color: var(--text);
-}
-.board ol { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
-.board li {
-  display: grid; grid-template-columns: 2.4em 1fr auto auto; gap: 10px; align-items: center;
-  background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 0.5em 0.7em;
-  font-size: 1.15rem;
-}
-.board li .place { font-family: var(--mono); font-weight: 700; color: var(--orange); font-size: 1.3rem; }
-.board li .at { font-family: var(--mono); color: var(--muted); font-size: 0.95rem; }
-.board li button { background: none; border: 0; color: var(--muted); font-size: 1.2rem; padding: 0 0.3em; }
-.roomlist { margin: 18px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; color: var(--muted); }
-.roomlist b { color: var(--text); font-family: var(--mono); margin-right: 0.5em; }
 </style>
 </head>
 <body>
@@ -373,11 +332,11 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
   <h1>Escape the <span>Heap</span></h1>
   <p class="lede">Your team is trapped inside a running program. Five rooms and one exit stand between you and freedom, and every lock opens only with the exact answer a careful trace gives you.</p>
   <ul class="rules">
-    <li><span><b>One device per team.</b> A laptop shows the code best.</span></li>
+    <li><span><b>Pairs, one device per pair.</b> A laptop shows the code best.</span></li>
     <li><span><b>Brains only.</b> No compilers, no AI. Trace it like the exam.</span></li>
     <li><span><b>Wrong code:</b> segmentation fault and a 20-second reboot.</span></li>
-    <li><span><b>Hints</b> are there if you're stuck. Each one adds 1:00 to your time.</span></li>
-    <li><span><b>First team out wins.</b> Hold up your screen when you escape.</span></li>
+    <li><span><b>Hints</b> unlock after 2 minutes in a room. Each one adds 1:00 to your time.</span></li>
+    <li><span><b>First pair out wins.</b> Hold up your screen when you escape.</span></li>
   </ul>
   <div id="resume" class="resume" hidden>
     <p>Welcome back, <b id="resume-team"></b>. You're in <b id="resume-room"></b>.</p>
@@ -461,58 +420,17 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
   <p style="margin-top: 2.4em;"><button class="btn ghost small" type="button" id="esc-reset">Start over (new team)</button></p>
 </main>
 
-<!-- ============ host ============ -->
-<main id="v-host" class="host" hidden>
-  <div class="host-head">
-    <span class="kicker">CPSC 121A · Session 17</span>
-    <h1>Escape the Heap</h1>
-  </div>
-  <div class="host-grid">
-    <section class="panel">
-      <div class="countdown" id="cd" aria-live="off">20:00</div>
-      <div class="controls">
-        <button class="btn" type="button" id="cd-go">Start</button>
-        <button class="btn ghost" type="button" id="cd-minus">−1 min</button>
-        <button class="btn ghost" type="button" id="cd-plus">+1 min</button>
-        <button class="btn ghost" type="button" id="cd-reset">Reset</button>
-      </div>
-      <ul class="roomlist">
-        <li><b>1</b>The Boba Line · pointers</li>
-        <li><b>2</b>Too Many Tabs · stack and heap</li>
-        <li><b>3</b>Crash, Leak, or Fine? · new, delete, shared_ptr</li>
-        <li><b>4</b>Group Project · counting owners</li>
-        <li><b>5</b>The Highlight Reel · find the leak</li>
-        <li><b>EXIT</b>The fix</li>
-      </ul>
-    </section>
-    <section class="panel board">
-      <div class="join">
-        <div class="qr"><svg viewBox="0 0 37 37" class="segno"><path fill="#fff" d="M0 0h37v37h-37z"/><path class="qrline" stroke="#00244e" d="M2 2.5h7m1 0h1m3 0h1m1 0h2m1 0h1m1 0h1m2 0h2m2 0h7m-33 1h1m5 0h1m1 0h2m1 0h1m2 0h2m2 0h2m1 0h4m1 0h1m5 0h1m-33 1h1m1 0h3m1 0h1m1 0h1m1 0h2m1 0h1m1 0h4m1 0h1m3 0h1m1 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h2m1 0h2m4 0h2m4 0h1m2 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h3m1 0h3m1 0h1m1 0h1m1 0h4m2 0h1m1 0h3m1 0h1m-33 1h1m5 0h1m2 0h1m4 0h1m2 0h3m2 0h2m2 0h1m5 0h1m-33 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-25 1h1m1 0h3m1 0h1m1 0h4m1 0h1m1 0h1m-23 1h2m1 0h1m1 0h2m1 0h1m1 0h1m2 0h4m2 0h5m1 0h1m1 0h5m-33 1h1m4 0h1m1 0h1m4 0h1m1 0h2m1 0h1m2 0h1m1 0h1m1 0h4m3 0h2m-31 1h1m2 0h2m1 0h1m3 0h1m1 0h3m1 0h1m1 0h1m3 0h1m1 0h2m2 0h3m-33 1h6m1 0h1m1 0h1m1 0h4m2 0h6m5 0h1m-29 1h2m2 0h1m1 0h1m1 0h4m2 0h1m3 0h1m1 0h2m2 0h3m2 0h1m-28 1h1m2 0h1m3 0h2m1 0h2m2 0h4m1 0h1m2 0h1m1 0h1m3 0h1m1 0h1m-31 1h5m3 0h2m4 0h2m4 0h1m1 0h2m1 0h1m1 0h1m1 0h2m-33 1h1m3 0h2m3 0h2m1 0h2m3 0h2m1 0h2m1 0h2m1 0h2m1 0h1m1 0h1m-32 1h3m1 0h1m1 0h3m1 0h1m2 0h2m1 0h2m1 0h1m1 0h2m2 0h2m-27 1h1m1 0h1m2 0h1m1 0h1m1 0h1m1 0h1m1 0h6m1 0h1m1 0h1m1 0h1m1 0h2m3 0h2m-33 1h1m2 0h4m8 0h3m4 0h1m3 0h1m3 0h3m-33 1h1m1 0h3m6 0h5m1 0h3m1 0h1m2 0h2m1 0h2m2 0h2m-33 1h1m1 0h2m1 0h2m3 0h2m3 0h1m1 0h1m1 0h3m1 0h1m1 0h2m2 0h1m1 0h1m-30 1h1m8 0h1m1 0h2m1 0h1m4 0h1m2 0h3m3 0h3m-33 1h1m1 0h3m1 0h2m1 0h2m2 0h2m1 0h3m1 0h3m3 0h2m1 0h1m1 0h2m-32 1h4m3 0h2m4 0h6m1 0h1m1 0h2m1 0h2m4 0h1m-33 1h1m1 0h2m1 0h2m1 0h2m4 0h1m1 0h1m1 0h1m1 0h9m-21 1h2m1 0h1m2 0h1m1 0h1m3 0h2m1 0h2m3 0h2m1 0h2m-33 1h7m1 0h3m1 0h1m1 0h1m2 0h1m5 0h2m1 0h1m1 0h1m1 0h1m1 0h1m-33 1h1m5 0h1m2 0h2m1 0h1m1 0h1m2 0h2m1 0h3m1 0h1m3 0h1m2 0h2m-33 1h1m1 0h3m1 0h1m1 0h2m1 0h1m2 0h2m5 0h1m2 0h6m2 0h1m-33 1h1m1 0h3m1 0h1m3 0h4m1 0h1m4 0h1m7 0h1m2 0h2m-33 1h1m1 0h3m1 0h1m1 0h1m3 0h1m3 0h1m1 0h1m2 0h1m1 0h1m4 0h3m1 0h1m-33 1h1m5 0h1m1 0h2m1 0h3m2 0h1m1 0h2m1 0h1m1 0h2m3 0h1m2 0h1m-32 1h7m2 0h1m2 0h1m1 0h3m3 0h2m2 0h3m1 0h2m1 0h2"/></svg></div>
-        <div>
-          <span class="kicker">Join</span>
-          <div class="url">smoran02.github.io/<wbr>escape-the-heap</div>
-          <p style="color: var(--muted); margin: 0.4em 0 0;">One device per team. Brains only.</p>
-        </div>
-      </div>
-      <h2>Escaped</h2>
-      <form id="board-form">
-        <input id="board-name" placeholder="Team name, then Enter" maxlength="40" aria-label="Escaped team name">
-        <button class="btn small" type="submit">Add</button>
-      </form>
-      <ol id="board"></ol>
-    </section>
-  </div>
-</main>
-
 <script>
 (() => {
 'use strict';
 
 const SALT = 'eth17';
 const KEY = 'escape-the-heap-v1';
-const HOST_KEY = 'escape-the-heap-host-v1';
 const LOCKOUT_MS = 20000;
 const HINT_MS = 60000;
+const HINT_DELAY_MS = 2 * 60000;
+// Live scoreboard endpoint (Google Apps Script web app). Empty turns reporting off.
+const REPORT_URL = '';
 
 // Storage can be missing (private windows, blocked site data): every access is guarded.
 const store = {
@@ -779,10 +697,33 @@ const $ = (id) => document.getElementById(id);
 let state = null;
 let tick = null;
 
+function newId() {
+  const bytes = new Uint8Array(8);
+  if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(bytes);
+  else bytes.forEach((_, i) => { bytes[i] = Math.floor(Math.random() * 256); });
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
 function fresh(team) {
-  return { team, startedAt: Date.now(), room: 0, hints: [], wrong: 0, lockUntil: 0, finishedAt: null, cleared: null };
+  const now = Date.now();
+  return { id: newId(), team, startedAt: now, roomEnteredAt: now, room: 0, hints: [], wrong: 0, lockUntil: 0, finishedAt: null, cleared: null };
 }
 function save() { if (state) store.set(KEY, state); }
+
+// One progress snapshot per event for the instructor's scoreboard. Fire and
+// forget: the game never waits on it or breaks without it.
+function report(type, extra = {}) {
+  if (!REPORT_URL || !state) return;
+  const body = JSON.stringify(Object.assign({
+    team: state.id, name: state.team, type, room: state.room, current: state.room,
+    hints: state.hints.length, wrong: state.wrong, elapsed: elapsedMs(), finished: !!state.finishedAt,
+  }, extra));
+  try {
+    fetch(REPORT_URL, {
+      method: 'POST', mode: 'no-cors', keepalive: true,
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body,
+    }).catch(() => {});
+  } catch (e) { /* offline or blocked: keep playing */ }
+}
 
 function elapsedMs() {
   const end = state.finishedAt || Date.now();
@@ -796,7 +737,7 @@ function fmt(ms) {
 function normalize(raw) { return raw.toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 
 function show(view) {
-  ['v-start', 'v-room', 'v-escaped', 'v-host'].forEach((id) => { $(id).hidden = id !== view; });
+  ['v-start', 'v-room', 'v-escaped'].forEach((id) => { $(id).hidden = id !== view; });
   window.scrollTo(0, 0);
 }
 
@@ -847,13 +788,29 @@ function renderRoom() {
   $('hint-box').hidden = !hinted;
   $('hint-text').innerHTML = hinted ? ` ${r.hint}` : '';
   $('hint-btn').hidden = hinted;
+  $('hint-btn').disabled = false;
   $('hint-tap').hidden = true;
   updateClock();
   if (state.lockUntil > Date.now()) showCrash(false);
 }
 
+// The hint button stays locked for the first two minutes in each room.
+function updateHint() {
+  const btn = $('hint-btn');
+  if (btn.hidden || state.room >= ROOMS.length) return;
+  const left = (state.roomEnteredAt || state.startedAt) + HINT_DELAY_MS - Date.now();
+  if (left > 0) {
+    btn.disabled = true;
+    btn.textContent = `Hint unlocks in ${fmt(left + 999)}`;
+  } else if (btn.disabled) {
+    btn.disabled = false;
+    btn.textContent = 'Need a hint? +1:00';
+  }
+}
+
 function updateClock() {
   if (!state) return;
+  updateHint();
   const n = state.hints.length;
   const pen = n ? `<small>${n} hint${n === 1 ? '' : 's'}</small>` : '';
   $('top-clock').innerHTML = fmt(elapsedMs()) + pen;
@@ -919,6 +876,7 @@ function showCleared(i) {
 $('cleared-next').addEventListener('click', () => {
   $('o-cleared').hidden = true;
   state.cleared = null;
+  state.roomEnteredAt = Date.now();
   if (state.room >= ROOMS.length) {
     state.finishedAt = state.finishedAt || Date.now();
     save();
@@ -956,6 +914,7 @@ $('team-form').addEventListener('submit', (ev) => {
   if (!team) return;
   state = fresh(team);
   save();
+  report('join');
   startTicking();
   renderRoom();
 });
@@ -963,6 +922,10 @@ $('team-form').addEventListener('submit', (ev) => {
 $('resume-go').addEventListener('click', () => {
   state = store.get(KEY);
   if (!state) { renderStart(); return; }
+  if (!state.id) state.id = newId();
+  if (!state.roomEnteredAt) state.roomEnteredAt = Date.now();
+  save();
+  report('resume');
   startTicking();
   renderRoom();
 });
@@ -1006,6 +969,7 @@ $('lock').addEventListener('submit', (ev) => {
     state.cleared = solved;
     if (state.room >= ROOMS.length) state.finishedAt = Date.now();
     save();
+    report(state.finishedAt ? 'escape' : 'solve', { room: solved });
     showCleared(solved);
   } else {
     const form = $('lock');
@@ -1013,6 +977,7 @@ $('lock').addEventListener('submit', (ev) => {
     void form.offsetWidth;
     form.classList.add('shake');
     showCrash(true);
+    report('wrong', { guess });
   }
 });
 
@@ -1027,6 +992,7 @@ $('hint-btn').addEventListener('click', () => {
   const r = ROOMS[state.room];
   if (!state.hints.includes(r.id)) state.hints.push(r.id);
   save();
+  report('hint');
   hintArmed = 0;
   $('hint-tap').hidden = true;
   $('hint-btn').hidden = true;
@@ -1035,106 +1001,20 @@ $('hint-btn').addEventListener('click', () => {
   updateClock();
 });
 
+let heartbeat = null;
 function startTicking() {
   clearInterval(tick);
   tick = setInterval(updateClock, 500);
-}
-
-// ------------------------------------------------------------------ host
-
-let host = null;
-
-function hostSave() { store.set(HOST_KEY, host); }
-function hostRemaining() {
-  return host.running ? host.endsAt - Date.now() : host.remaining;
-}
-function renderCountdown() {
-  const left = hostRemaining();
-  const cd = $('cd');
-  if (left <= 0) {
-    cd.textContent = '0:00';
-    cd.className = 'countdown over';
-  } else {
-    const s = Math.ceil(left / 1000);
-    cd.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-    cd.className = left <= 120000 ? 'countdown low' : 'countdown';
-  }
-  $('cd-go').textContent = host.running ? 'Pause' : (left < host.duration && left > 0 ? 'Resume' : 'Start');
-}
-function renderBoard() {
-  $('board').innerHTML = host.board.map((b, i) =>
-    `<li><span class="place">${i + 1}</span><span>${esc(b.team)}</span><span class="at">${b.at}</span><button type="button" data-i="${i}" aria-label="Remove ${esc(b.team)}">×</button></li>`).join('');
-}
-function toggleCountdown() {
-  if (host.running) {
-    host.remaining = Math.max(0, host.endsAt - Date.now());
-    host.running = false;
-  } else {
-    if (host.remaining <= 0) host.remaining = host.duration;
-    host.endsAt = Date.now() + host.remaining;
-    host.running = true;
-  }
-  hostSave();
-  renderCountdown();
-}
-function nudge(ms) {
-  if (host.running) host.endsAt += ms;
-  else host.remaining = Math.max(0, host.remaining + ms);
-  host.duration = Math.max(60000, host.duration + ms);
-  hostSave();
-  renderCountdown();
-}
-
-function initHost() {
-  host = store.get(HOST_KEY) || { duration: 20 * 60000, remaining: 20 * 60000, running: false, endsAt: 0, board: [] };
-  show('v-host');
-  document.title = 'Escape the Heap · Host';
-  renderCountdown();
-  renderBoard();
-  setInterval(renderCountdown, 250);
-  $('cd-go').addEventListener('click', toggleCountdown);
-  $('cd-plus').addEventListener('click', () => nudge(60000));
-  $('cd-minus').addEventListener('click', () => nudge(-60000));
-  $('cd-reset').addEventListener('click', () => {
-    host.running = false;
-    host.remaining = host.duration;
-    hostSave();
-    renderCountdown();
-  });
-  document.addEventListener('keydown', (ev) => {
-    if (ev.code === 'Space' && document.activeElement.tagName !== 'INPUT') {
-      ev.preventDefault();
-      toggleCountdown();
-    }
-  });
-  $('board-form').addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    const team = $('board-name').value.trim();
-    if (!team) return;
-    const used = host.duration - Math.max(0, hostRemaining());
-    host.board.push({ team, at: fmt(used) });
-    $('board-name').value = '';
-    hostSave();
-    renderBoard();
-  });
-  $('board').addEventListener('click', (ev) => {
-    const i = ev.target.getAttribute('data-i');
-    if (i === null) return;
-    host.board.splice(Number(i), 1);
-    hostSave();
-    renderBoard();
-  });
+  // A once-a-minute snapshot keeps the scoreboard current even if an event report was lost.
+  clearInterval(heartbeat);
+  heartbeat = setInterval(() => { if (state && !state.finishedAt) report('ping'); }, 60000);
 }
 
 // ------------------------------------------------------------------ boot
 
 window.ESCAPE_TEST = { sha256, normalize, ROOMS, SALT };
 
-if (new URLSearchParams(location.search).has('host')) {
-  initHost();
-} else {
-  renderStart();
-}
+renderStart();
 })();
 </script>
 </body>
