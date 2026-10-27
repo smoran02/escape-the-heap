@@ -344,15 +344,9 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
   display: grid; place-items: center; font-family: var(--mono); font-weight: 700; font-size: 0.75rem; color: var(--muted);
 }
 .bonus-pips span.done { background: var(--citrus); border-color: var(--citrus); color: #00244E; }
-.skip { margin-top: 1.4em; color: var(--muted); font-size: 0.95rem; }
-.skip summary { cursor: pointer; color: var(--text); font-weight: 700; }
-.skip p { margin: 0.6em 0; }
-.skip input {
-  font: inherit; font-family: var(--mono); font-weight: 700; letter-spacing: 0.18em;
-  width: 8em; padding: 0.5em 0.7em; border-radius: 10px;
-  border: 1.5px solid var(--line-strong); background: rgba(3, 16, 31, 0.75); color: var(--text);
-}
-.skip .err { color: var(--citrus); }
+.team-form .form-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 0.6em; }
+.team-form .form-actions .btn { margin-top: 0; }
+.team-form .form-actions .btn.ghost { border-color: var(--citrus); }
 
 </style>
 </head>
@@ -370,6 +364,7 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
     <li><span><b>Hints</b> unlock after 2 minutes in a room. Each one adds 1:00 to your time.</span></li>
     <li><span><b>First pair out wins.</b> Hold up your screen when you escape.</span></li>
     <li><span><b>Escape early?</b> A bonus floor waits below the exit.</span></li>
+    <li><span><b>Back from last class?</b> Skip any room you already solved. Finished the whole game? Go straight to the bonus floor.</span></li>
   </ul>
   <div id="resume" class="resume" hidden>
     <p>Welcome back, <b id="resume-team"></b>. You're in <b id="resume-room"></b>.</p>
@@ -385,13 +380,10 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
       <input id="player-2" maxlength="40" placeholder="Partner's name" aria-label="Partner's name">
       <input id="player-3" maxlength="40" placeholder="Third (trios only)" aria-label="Third teammate's name">
     </div>
-    <button class="btn" type="submit">Enter the heap</button>
-    <details class="skip" id="skip">
-      <summary>Already escaped on a different device?</summary>
-      <p>Type the Exit's lock code here to go straight to the bonus floor. Fill in your team name and names above too, then press Enter the heap.</p>
-      <input id="skip-code" maxlength="8" spellcheck="false" autocorrect="off" aria-label="The Exit's lock code" inputmode="numeric">
-      <p class="err" id="skip-err" hidden>That's not the Exit's code. Clear this box to start from Room 1.</p>
-    </details>
+    <div class="form-actions">
+      <button class="btn" type="submit" id="go-main">Enter the heap</button>
+      <button class="btn ghost" type="submit" id="go-bonus">Finished last class? Go to the bonus floor</button>
+    </div>
   </form>
   <p class="foot">CPSC 121A · Cal State Fullerton</p>
 </main>
@@ -424,6 +416,8 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
       <div class="hint-zone">
         <button class="btn ghost small" type="button" id="hint-btn">Need a hint? +1:00</button>
         <span class="tap" id="hint-tap" hidden>Tap again to open it. It adds 1:00 to your time.</span>
+        <button class="btn ghost small" type="button" id="skip-btn">Already solved it? Skip this room</button>
+        <span class="tap" id="skip-tap" hidden>Tap again to skip. You'll see the answer.</span>
       </div>
       <div class="hint-box" id="hint-box" hidden><span class="kicker">Hint</span><span id="hint-text"></span></div>
     </form>
@@ -1077,6 +1071,9 @@ function renderRoom() {
   $('hint-btn').hidden = hinted;
   $('hint-btn').disabled = false;
   $('hint-tap').hidden = true;
+  // Skipping is for main rooms a pair already solved last class, not the bonus floor.
+  $('skip-btn').hidden = inBonus();
+  $('skip-tap').hidden = true;
   updateClock();
   if (p.lockUntil > Date.now()) showCrash(false);
 }
@@ -1152,6 +1149,10 @@ function showCleared(i) {
     $('cleared-kicker').innerHTML = `Bonus ${i + 1} cleared <span class="answer-chip">${esc(r.answer)}</span>`;
     $('cleared-title').textContent = r.cheer;
     $('cleared-next').textContent = last ? 'Climb back up' : `On to Bonus ${i + 2}`;
+  } else if ((state.skips || []).includes(r.id)) {
+    $('cleared-kicker').innerHTML = `${last ? 'Exit' : `Room ${r.label}`} skipped <span class="answer-chip">${esc(r.answer)}</span>`;
+    $('cleared-title').textContent = 'Here\'s how it works.';
+    $('cleared-next').textContent = last ? 'Walk out' : `On to ${rooms[i + 1].label === 'EXIT' ? 'the exit' : `Room ${rooms[i + 1].label}`}`;
   } else {
     $('cleared-kicker').innerHTML = `${last ? 'Exit unlocked' : `Room ${r.label} cleared`} <span class="answer-chip">${esc(r.answer)}</span>`;
     $('cleared-title').textContent = last ? 'The door swings open.' : ['Nice trace.', 'Unlocked.', 'Clean run.', 'Count confirmed.', 'Leak found.'][i] || 'Unlocked.';
@@ -1202,7 +1203,9 @@ function renderEscaped() {
   $('esc-team').textContent = state.team;
   $('esc-time').hidden = !!state.skipped;
   $('esc-time').textContent = fmt(elapsedMs());
-  $('esc-stats').textContent = state.skipped ? 'You escaped on another device.' : tally(state.hints.length, state.wrong);
+  const skips = (state.skips || []).length;
+  $('esc-stats').textContent = state.skipped ? 'You finished the game last class.'
+    : tally(state.hints.length, state.wrong) + (skips ? ` · ${skips} room${skips === 1 ? '' : 's'} skipped` : '');
   renderBonusCard();
   const colors = ['#FF7900', '#8ACCE4', '#EDA941', '#F3CD47', '#2973B6', '#FFFFFF'];
   $('confetti').innerHTML = Array.from({ length: 70 }, (_, i) => {
@@ -1256,6 +1259,12 @@ $('bonus-go').addEventListener('click', () => { $('confetti').innerHTML = ''; en
 
 // ------------------------------------------------------------------ player events
 
+// Two submit buttons: Enter (and the Enter key) starts at Room 1; the other
+// is for pairs who finished the game last class and goes to the bonus floor.
+let wantBonus = false;
+$('go-main').addEventListener('click', () => { wantBonus = false; });
+$('go-bonus').addEventListener('click', () => { wantBonus = true; });
+
 $('team-form').addEventListener('submit', (ev) => {
   ev.preventDefault();
   const team = $('team-name').value.trim().slice(0, 24);
@@ -1265,23 +1274,15 @@ $('team-form').addEventListener('submit', (ev) => {
     .map((id) => $(id).value.replace(/;/g, ',').replace(/\s+/g, ' ').trim().slice(0, 40))
     .filter(Boolean);
   if (!players.length) return;
-  // A pair that escaped on another device skips to the bonus floor with the Exit's code.
-  const skip = normalize($('skip-code').value);
-  const exit = ROOMS[ROOMS.length - 1];
-  if (skip && !exit.hashes.includes(sha256(`${SALT}:${exit.id}:${skip}`))) {
-    $('skip-err').hidden = false;
-    return;
-  }
-  $('skip-err').hidden = true;
   state = fresh(team, players);
-  if (skip) {
+  if (wantBonus) {
     state.room = ROOMS.length;
     state.finishedAt = state.startedAt;
     state.skipped = true;
   }
   save();
   report('join');
-  if (skip) { enterBonus(); return; }
+  if (wantBonus) { enterBonus(); return; }
   startTicking();
   renderRoom();
 });
@@ -1376,6 +1377,29 @@ $('hint-btn').addEventListener('click', () => {
   $('hint-text').innerHTML = ` ${r.hint}`;
   $('hint-box').hidden = false;
   updateClock();
+});
+
+// Skip a main room the pair already solved last class: two taps, then the
+// room's answer card. The scoreboard marks skipped rooms and ranks a run with
+// skips after the clean escapes.
+let skipArmed = 0;
+$('skip-btn').addEventListener('click', () => {
+  if (!state || inBonus() || state.room >= ROOMS.length) return;
+  if (Date.now() - skipArmed > 4000) {
+    skipArmed = Date.now();
+    $('skip-tap').hidden = false;
+    setTimeout(() => { if (Date.now() - skipArmed >= 4000) $('skip-tap').hidden = true; }, 4100);
+    return;
+  }
+  skipArmed = 0;
+  const skipped = state.room;
+  state.skips = (state.skips || []).concat(ROOMS[skipped].id);
+  state.room += 1;
+  state.cleared = skipped;
+  if (state.room >= ROOMS.length) state.finishedAt = Date.now();
+  save();
+  report('skip', { room: skipped });
+  showCleared(skipped);
 });
 
 let heartbeat = null;
