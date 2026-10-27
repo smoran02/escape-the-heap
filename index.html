@@ -327,6 +327,33 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
 @media (prefers-reduced-motion: reduce) { .confetti { display: none; } }
 @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
 
+/* ---------- bonus floor ---------- */
+.doors.bonus .door-dot.done { background: var(--citrus); border-color: var(--citrus); }
+.bonus-card {
+  margin: 2em auto 0; max-width: 34em; text-align: left;
+  background: var(--surface); border: 1.5px solid var(--citrus); border-radius: 16px;
+  padding: 18px 20px;
+}
+.bonus-card .kicker { color: var(--citrus); }
+.bonus-card h2 { font-size: clamp(1.4rem, 4.5vw, 1.8rem); margin: 0.2em 0 0.45em; }
+.bonus-card p { color: var(--muted); margin: 0 0 1em; }
+.bonus-card p b { color: var(--text); }
+.bonus-pips { display: flex; gap: 6px; margin: 0 0 1em; }
+.bonus-pips span {
+  flex: 1; height: 30px; border-radius: 6px 6px 2px 2px; border: 1.5px solid var(--line-strong);
+  display: grid; place-items: center; font-family: var(--mono); font-weight: 700; font-size: 0.75rem; color: var(--muted);
+}
+.bonus-pips span.done { background: var(--citrus); border-color: var(--citrus); color: #00244E; }
+.skip { margin-top: 1.4em; color: var(--muted); font-size: 0.95rem; }
+.skip summary { cursor: pointer; color: var(--text); font-weight: 700; }
+.skip p { margin: 0.6em 0; }
+.skip input {
+  font: inherit; font-family: var(--mono); font-weight: 700; letter-spacing: 0.18em;
+  width: 8em; padding: 0.5em 0.7em; border-radius: 10px;
+  border: 1.5px solid var(--line-strong); background: rgba(3, 16, 31, 0.75); color: var(--text);
+}
+.skip .err { color: var(--citrus); }
+
 </style>
 </head>
 <body>
@@ -342,6 +369,7 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
     <li><span><b>Wrong code:</b> segmentation fault and a 20-second reboot.</span></li>
     <li><span><b>Hints</b> unlock after 2 minutes in a room. Each one adds 1:00 to your time.</span></li>
     <li><span><b>First pair out wins.</b> Hold up your screen when you escape.</span></li>
+    <li><span><b>Escape early?</b> A bonus floor waits below the exit.</span></li>
   </ul>
   <div id="resume" class="resume" hidden>
     <p>Welcome back, <b id="resume-team"></b>. You're in <b id="resume-room"></b>.</p>
@@ -358,6 +386,12 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
       <input id="player-3" maxlength="40" placeholder="Third (trios only)" aria-label="Third teammate's name">
     </div>
     <button class="btn" type="submit">Enter the heap</button>
+    <details class="skip" id="skip">
+      <summary>Already escaped on a different device?</summary>
+      <p>Type the Exit's lock code here to go straight to the bonus floor. Fill in your team name and names above too, then press Enter the heap.</p>
+      <input id="skip-code" maxlength="8" spellcheck="false" autocorrect="off" aria-label="The Exit's lock code" inputmode="numeric">
+      <p class="err" id="skip-err" hidden>That's not the Exit's code. Clear this box to start from Room 1.</p>
+    </details>
   </form>
   <p class="foot">CPSC 121A · Cal State Fullerton</p>
 </main>
@@ -366,7 +400,7 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
 <div id="v-room" hidden>
   <header class="topbar">
     <div class="wrap">
-      <span class="brand">Escape the Heap</span>
+      <span class="brand" id="top-brand">Escape the Heap</span>
       <span class="team" id="top-team"></span>
       <span class="clock" id="top-clock" aria-label="Your time">0:00</span>
     </div>
@@ -427,7 +461,14 @@ h1, h2, h3 { line-height: 1.15; margin: 0; }
   <div class="teamname" id="esc-team"></div>
   <div class="final" id="esc-time"></div>
   <p class="stats" id="esc-stats"></p>
-  <p class="hold">Every owner let go, the count hit 0, and nothing leaked. <b>Hold this screen up</b> so your instructor can see it.</p>
+  <p class="hold" id="esc-hold">Every owner let go, the count hit 0, and nothing leaked. <b>Hold this screen up</b> so your instructor can see it.</p>
+  <section class="bonus-card" id="bonus-card" aria-labelledby="bonus-title">
+    <span class="kicker" id="bonus-kicker"></span>
+    <h2 id="bonus-title"></h2>
+    <p id="bonus-text"></p>
+    <div class="bonus-pips" id="bonus-pips" aria-hidden="true"></div>
+    <button class="btn" type="button" id="bonus-go"></button>
+  </section>
   <p style="margin-top: 2.4em;"><button class="btn ghost small" type="button" id="esc-reset">Start over (new team)</button></p>
 </main>
 
@@ -440,6 +481,7 @@ const KEY = 'escape-the-heap-v1';
 const LOCKOUT_MS = 20000;
 const HINT_MS = 60000;
 const HINT_DELAY_MS = 2 * 60000;
+const AWAY_MS = 30 * 60000;
 // Live scoreboard endpoint (Google Apps Script web app). Empty turns reporting off.
 const REPORT_URL = 'https://script.google.com/macros/s/AKfycbzuROOToYLG1CVTib5VmyX9IHS3j3ZDWvYy3yqMKLEhZv66xHoUbnIFOzMeRPzREGRU/exec';
 
@@ -672,11 +714,200 @@ f->Start();`, ids: ['f'] },
   },
 ];
 
+// ------------------------------------------------------------------ bonus floor
+
+// Harder rooms for pairs who escape early. Each mixes pointers with an older
+// topic. The programs are in rooms/b1.cc to b5.cc (local only).
+const BONUS = [
+  {
+    id: 'b1', label: 'B1', kicker: 'Bonus 1 of 5 · Sessions 03 and 15 · Passing pointers',
+    title: 'Respawn', cheer: 'Still standing.',
+    story: 'Your health lives in main. Three functions try to help.',
+    blocks: [{ code: String.raw`void Heal(int* hp) {
+  *hp += 50;
+}
+
+void Respawn(int* hp) {
+  hp = new int{100};
+  *hp += 1;
+}
+
+void Shield(int hp) {
+  hp += 25;
+}
+
+int main() {
+  int health = 20;
+  int* player = &health;
+  Heal(player);
+  Respawn(player);
+  Shield(*player);
+  std::cout << health << " " << *player << "\n";
+  return 0;
+}`, ids: ['hp', 'health', 'player'] }],
+    ask: 'What does line 20 print? Then: how many ints are left on the heap with no way to reach them?',
+    format: 'Three numbers, e.g. 10 10 0.', numeric: true, placeholder: '0 0 0',
+    hashes: ['28355319dca24fb2a5feda00b6db6e2c4d567ad3af3178bd1ac38641088cfe7e'],
+    hint: 'A pointer parameter is still a copy (Session 03): <code>hp</code> gets its own copy of the address. <code>*hp = ...</code> follows that copy to <code>health</code>. <code>hp = ...</code> only moves the copy.',
+    answer: '70 70 · 1',
+    why: `<ul>
+            <li><b>Heal works.</b> <code>hp</code> holds a copy of health's address, and <code>*hp += 50</code> follows it: 20 becomes 70.</li>
+            <li><b>Respawn changes nothing in main.</b> Line 6 moves Respawn's own copy of the pointer to a new int. <code>player</code> still points at <code>health</code>.</li>
+            <li><b>Shield gets a copy of the int.</b> Line 19 passes the value 70, and only the copy gets the 25.</li>
+            <li><b>1 int leaks.</b> When Respawn returns, <code>hp</code> is destroyed, and the 101 on the heap has no address left.</li>
+          </ul>`,
+  },
+  {
+    id: 'b2', label: 'B2', kicker: 'Bonus 2 of 5 · Sessions 11, 12, and 15 · Maps and pointers',
+    title: 'The Back Room', cheer: 'Inventory checked.',
+    story: 'The boba shop from Room 1 counts cups in a map now, and somebody made a backup before the rush.',
+    note: '<code>at(key)</code> hands back the value stored inside the map itself (Session 11), so <code>&amp;flavor_to_cups.at("taro")</code> is the address of that value.',
+    blocks: [{ code: String.raw`std::map<std::string, int> flavor_to_cups{
+    {"taro", 4}, {"matcha", 9}};
+int* low = &flavor_to_cups.at("taro");
+std::map<std::string, int> backup{flavor_to_cups};
+*low -= 1;
+flavor_to_cups.insert({"taro", 20});
+backup.at("taro") += 10;
+low = &backup.at("matcha");
+*low = flavor_to_cups.at("taro") + 1;
+std::cout << flavor_to_cups.at("taro") << " ";
+std::cout << backup.at("taro") << " ";
+std::cout << backup.at("matcha") << "\n";`, ids: ['flavor_to_cups', 'low', 'backup'] }],
+    ask: 'What does it print? Enter the three numbers in order.',
+    format: 'Digits only. Spaces are fine.', numeric: true, placeholder: '0 0 0',
+    hashes: ['ac30d24b492fe2ba31fdc6b3f6a871d98c94c64d2d5e331246aa7986351a791a'],
+    hint: 'Line 4 builds a separate map with its own values (Session 12). And if taro is already a key, what does line 6\'s <code>insert</code> do (Session 11)?',
+    answer: '3 14 4',
+    why: `<ul>
+            <li>Line 3: <code>low</code> points at the 4 inside <code>flavor_to_cups</code>.</li>
+            <li>Line 4 copies the map. The backup has its own taro (4) and its own matcha (9).</li>
+            <li>Line 5 takes the original's taro to 3. Line 6 does nothing: <code>insert</code> never overwrites a key that's already there.</li>
+            <li>Line 7: the backup's taro becomes 14. Line 8 moves <code>low</code> to the backup's matcha, and line 9 stores 3 + 1 there.</li>
+          </ul>`,
+  },
+  {
+    id: 'b3', label: 'B3', kicker: 'Bonus 3 of 5 · Sessions 10 and 15 · Templates and pointers',
+    title: 'Team Swap', cheer: 'Teams balanced.',
+    story: 'Two players switch teams with the Swap template from Session 10. The trick is working out what T is each time.',
+    blocks: [{ code: String.raw`template <typename T>
+void Swap(T& a, T& b) {
+  T temp = a;
+  a = b;
+  b = temp;
+}
+
+int main() {
+  int red = 1;
+  int blue = 2;
+  int* p = &red;
+  int* q = &blue;
+  Swap(p, q);
+  *p += 10;
+  Swap(*p, red);
+  std::cout << red << " " << blue << " ";
+  std::cout << *p << " " << *q << "\n";
+  return 0;
+}`, ids: ['a', 'b', 'temp', 'red', 'blue', 'p', 'q'] }],
+    ask: 'What does it print? Enter the four numbers in order.',
+    format: 'Digits only. Spaces are fine.', numeric: true, placeholder: '0 0 0 0',
+    hashes: ['36c1bed4a4b1306d73eaa7634614789c6cf781882a46c0c8488a871a9605f6ac'],
+    hint: 'On line 13 the arguments are <code>int*</code>, so T is <code>int*</code>: Swap trades the two addresses, and red and blue stay put. On line 15, T is <code>int</code>.',
+    answer: '12 1 1 12',
+    why: `<ul>
+            <li>Line 13: T is <code>int*</code>, so the pointers trade addresses. Now <code>p</code> points at blue and <code>q</code> at red. red and blue are still 1 and 2.</li>
+            <li>Line 14: <code>*p</code> is blue, so blue becomes 12.</li>
+            <li>Line 15: T is <code>int</code>. <code>*p</code> is blue, so blue and red trade values: red is 12, blue is 1.</li>
+            <li>Line 17 follows the pointers: <code>*p</code> is blue (1) and <code>*q</code> is red (12).</li>
+          </ul>`,
+  },
+  {
+    id: 'b4', label: 'B4', kicker: 'Bonus 4 of 5 · Sessions 12 and 17 · A map of owners',
+    title: 'Server Browser', cheer: 'Lobby closed.',
+    story: 'The server browser maps each player to the lobby they joined. Then somebody backs up the whole list.',
+    note: '<code>Lobby</code> is the Party Lobby class: its constructor prints <code>[open]</code> and its destructor prints <code>[closed]</code>.',
+    blocks: [{ code: String.raw`int main() {
+  std::shared_ptr<Lobby> mk =
+      std::make_shared<Lobby>("Mario Kart Night");
+  std::map<std::string, std::shared_ptr<Lobby>> player_to_lobby;
+  player_to_lobby.insert({"ana", mk});
+  player_to_lobby.insert({"ben", mk});
+  player_to_lobby.insert({"ana", nullptr});
+  std::map<std::string, std::shared_ptr<Lobby>> backup{player_to_lobby};
+  std::cout << mk.use_count() << "\n";
+  player_to_lobby.clear();
+  mk = nullptr;
+  std::cout << backup.at("ana").use_count() << "\n";
+  backup.clear();
+  std::cout << "done\n";
+  return 0;
+}`, ids: ['mk', 'player_to_lobby', 'backup'] }],
+    ask: 'Enter the two numbers it prints, then the line number where [closed] prints.',
+    format: 'Three numbers, e.g. 1 1 16.', numeric: true, placeholder: '0 0 00',
+    hashes: ['6e61d794d629caafc97ef3923cf2fbf3417ef6e5cecff46ae1a48cacbc13ff34'],
+    hint: 'Every <code>shared_ptr</code> stored in a map is one more owner, and copying the map (line 8) copies every one of them. Does line 7 change anything if "ana" is already a key?',
+    answer: '5 2 · line 13',
+    why: `<ul>
+            <li>Lines 5 and 6 put two owners in the map, plus <code>mk</code>: 3. Line 7 does nothing, because "ana" is already a key.</li>
+            <li>Line 8: the map's copy constructor copies both <code>shared_ptr</code>s, so line 9 prints <b>5</b>.</li>
+            <li>Line 10's <code>clear</code> destroys two owners (3), and line 11 lets <code>mk</code> go (2). <code>at</code> hands back the pointer itself, not a copy, so line 12 prints <b>2</b>.</li>
+            <li>Line 13's <code>clear</code> destroys the last two owners. The count hits 0, so <code>[closed]</code> prints right there, before <code>done</code>.</li>
+          </ul>`,
+  },
+  {
+    id: 'b5', label: 'B5', kicker: 'Bonus 5 of 5 · Sessions 09, 16, and 17 · The final boss',
+    title: 'Save File', cheer: 'Boss down.',
+    story: 'You copy your save to a second slot before the boss fight, so losing costs you nothing. What could go wrong?',
+    blocks: [{ code: String.raw`class Save {
+ public:
+  Save(int level) : level_{new int{level}} {
+    std::cout << "new save\n";
+  }
+  ~Save() {
+    std::cout << "quit\n";
+    delete level_;
+  }
+  void Beat() { *level_ += 1; }
+  int GetLevel() const { return *level_; }
+ private:
+  int* level_;
+};
+
+int main() {
+  Save mine{3};
+  Save yours{mine};
+  yours.Beat();
+  yours.Beat();
+  std::cout << mine.GetLevel() << "\n";
+  return 0;
+}`, ids: ['level_', 'level', 'mine', 'yours'] }],
+    ask: 'How many times does new save print? What does line 21 print? How many times does quit print? Then: crash, leak, or fine?',
+    format: 'Three numbers, then C, L, or F, e.g. 2 3 2 F.', numeric: false, placeholder: '0 0 0 ?',
+    hashes: ['28b1bb9d987ae39563e7e94082abacfdfc28e1766a9d1aec99e3c234cb858409'],
+    hint: 'Save doesn\'t write a copy constructor, so line 18 uses the one the compiler provides (Session 09). It copies each member. What does copying a pointer copy?',
+    answer: '1 5 2 · C',
+    why: `<ul>
+            <li><b>1 new save.</b> Line 18 runs the compiler's copy constructor, not line 3's, so nothing prints.</li>
+            <li><b>5.</b> The compiler's copy constructor copies each member, and <code>level_</code> is a pointer, so <code>yours</code> got a copy of the address: two Saves, one int. Two Beats through <code>yours</code> take that one int from 3 to 5.</li>
+            <li><b>2 quits, then a crash.</b> At main's brace, <code>yours</code> is destroyed first: quit, delete. Then <code>mine</code>: quit, and delete the same address again. Double free.</li>
+          </ul>
+          <p>To give each save its own int, write the copy constructor yourself and make it do its own <code>new</code> (a deep copy):</p>
+          __FIX__
+          <p>A <code>std::shared_ptr&lt;int&gt;</code> member would stop the crash, but the two slots would still share one level.</p>`,
+    whyCode: String.raw`Save(const Save& other)
+    : level_{new int{*other.level_}} {}`,
+    whyIds: ['other', 'level_'],
+  },
+];
+// Bonus rooms report as rooms 7 to 11 (6 means escaped), so the scoreboard
+// reads bonus progress from the same "current" column as the main game.
+const BONUS_BASE = ROOMS.length + 1;
+
 // ------------------------------------------------------------------ code rendering
 
 const KEYWORDS = new Set(['int', 'void', 'class', 'public', 'private', 'return', 'new', 'delete',
   'if', 'else', 'const', 'long', 'bool', 'double', 'char', 'auto', 'nullptr',
-  'Tab', 'Lobby', 'Chat', 'Clip', 'string']);
+  'template', 'typename', 'T', 'Tab', 'Lobby', 'Chat', 'Clip', 'Save', 'string', 'map']);
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -720,13 +951,24 @@ function fresh(team, players) {
 }
 function save() { if (state) store.set(KEY, state); }
 
+// The bonus floor reuses the room screen. Its progress (room, hints, wrong,
+// lockUntil, cleared, roomEnteredAt) lives in state.bonus, so bonus hints and
+// wrong codes never touch the escape time.
+function inBonus() { return !!(state && state.bonus && state.mode === 'bonus'); }
+function list() { return inBonus() ? BONUS : ROOMS; }
+function prog() { return inBonus() ? state.bonus : state; }
+
 // One progress snapshot per event for the instructor's scoreboard. Fire and
 // forget: the game never waits on it or breaks without it.
 function report(type, extra = {}) {
   if (!REPORT_URL || !state) return;
+  const b = state.bonus;
   const body = JSON.stringify(Object.assign({
-    team: state.id, name: state.team, players: state.players || [], type, room: state.room, current: state.room,
-    hints: state.hints.length, wrong: state.wrong, elapsed: elapsedMs(), finished: !!state.finishedAt,
+    team: state.id, name: state.team, players: state.players || [], type,
+    room: inBonus() ? BONUS_BASE + b.room : state.room,
+    current: b ? BONUS_BASE + b.room : state.room,
+    // -1 tells the scoreboard this pair escaped on another device (no time here).
+    hints: state.hints.length, wrong: state.wrong, elapsed: state.skipped ? -1 : elapsedMs(), finished: !!state.finishedAt,
   }, extra));
   try {
     fetch(REPORT_URL, {
@@ -739,6 +981,34 @@ function report(type, extra = {}) {
 function elapsedMs() {
   const end = state.finishedAt || Date.now();
   return Math.max(0, end - state.startedAt) + state.hints.length * HINT_MS;
+}
+function bonusMs() {
+  const b = state.bonus;
+  return Math.max(0, (b.doneAt || Date.now()) - b.startedAt) + b.hints.length * HINT_MS;
+}
+
+let seenSavedAt = 0;
+// Time away from the page (class ended, laptop closed) doesn't count: a gap
+// longer than AWAY_MS since the page last ticked becomes a pause. Saves from
+// before seenAt existed fall back to the last thing the pair did, which drops
+// the time they spent in their current room that day.
+function catchUp() {
+  const now = Date.now();
+  const last = state.seenAt || Math.max(state.roomEnteredAt || 0, (state.lockUntil || 0) - LOCKOUT_MS, state.startedAt);
+  const gap = now - last;
+  if (gap > AWAY_MS) {
+    if (!state.finishedAt && state.startedAt <= last) {
+      state.startedAt += gap;
+      state.roomEnteredAt = (state.roomEnteredAt || last) + gap;
+    }
+    const b = state.bonus;
+    if (b && !b.doneAt && b.startedAt <= last) {
+      b.startedAt += gap;
+      b.roomEnteredAt += gap;
+    }
+  }
+  state.seenAt = now;
+  if (gap > AWAY_MS || now - seenSavedAt > 5000) { seenSavedAt = now; save(); }
 }
 function fmt(ms) {
   const s = Math.floor(ms / 1000);
@@ -758,7 +1028,9 @@ function renderStart() {
   if (saved && saved.team) {
     $('resume').hidden = false;
     $('resume-team').textContent = saved.team;
-    $('resume-room').textContent = saved.finishedAt ? 'the open air (you escaped)'
+    const b = saved.bonus;
+    $('resume-room').textContent = b && saved.mode === 'bonus' && b.room < BONUS.length ? `Bonus ${b.room + 1} of ${BONUS.length}`
+      : saved.finishedAt ? 'the open air (you escaped)'
       : saved.room >= ROOMS.length - 1 ? 'front of the exit' : `Room ${saved.room + 1}`;
   } else {
     $('resume').hidden = true;
@@ -766,18 +1038,22 @@ function renderStart() {
 }
 
 function renderDoors() {
-  $('doors').innerHTML = ROOMS.map((r, i) => {
-    const cls = i < state.room ? 'done' : i === state.room ? 'here' : '';
+  const p = prog();
+  $('doors').classList.toggle('bonus', inBonus());
+  $('doors').innerHTML = list().map((r, i) => {
+    const cls = i < p.room ? 'done' : i === p.room ? 'here' : '';
     return `<div class="door-dot ${cls}">${r.label}</div>`;
   }).join('');
 }
 
 function renderRoom() {
-  if (state.finishedAt) { renderEscaped(); return; }
-  if (state.cleared !== null) { showCleared(state.cleared); }
+  if (state.finishedAt && !inBonus()) { renderEscaped(); return; }
+  const p = prog();
+  if (p.cleared !== null) { showCleared(p.cleared); }
   show('v-room');
-  const r = ROOMS[state.room];
+  const r = list()[p.room];
   $('top-team').textContent = state.team;
+  $('top-brand').textContent = inBonus() ? 'Bonus floor' : 'Escape the Heap';
   renderDoors();
   $('room-kicker').textContent = r.kicker;
   $('room-title').textContent = r.title;
@@ -795,21 +1071,22 @@ function renderRoom() {
   input.value = '';
   input.placeholder = r.placeholder;
   input.setAttribute('inputmode', r.numeric ? 'numeric' : 'text');
-  const hinted = state.hints.includes(r.id);
+  const hinted = p.hints.includes(r.id);
   $('hint-box').hidden = !hinted;
   $('hint-text').innerHTML = hinted ? ` ${r.hint}` : '';
   $('hint-btn').hidden = hinted;
   $('hint-btn').disabled = false;
   $('hint-tap').hidden = true;
   updateClock();
-  if (state.lockUntil > Date.now()) showCrash(false);
+  if (p.lockUntil > Date.now()) showCrash(false);
 }
 
 // The hint button stays locked for the first two minutes in each room.
 function updateHint() {
   const btn = $('hint-btn');
-  if (btn.hidden || state.room >= ROOMS.length) return;
-  const left = (state.roomEnteredAt || state.startedAt) + HINT_DELAY_MS - Date.now();
+  const p = prog();
+  if (btn.hidden || p.room >= list().length) return;
+  const left = (p.roomEnteredAt || p.startedAt) + HINT_DELAY_MS - Date.now();
   if (left > 0) {
     btn.disabled = true;
     btn.textContent = `Hint unlocks in ${fmt(left + 999)}`;
@@ -821,10 +1098,11 @@ function updateHint() {
 
 function updateClock() {
   if (!state) return;
+  catchUp();
   updateHint();
-  const n = state.hints.length;
+  const n = prog().hints.length;
   const pen = n ? `<small>${n} hint${n === 1 ? '' : 's'}</small>` : '';
-  $('top-clock').innerHTML = fmt(elapsedMs()) + pen;
+  $('top-clock').innerHTML = fmt(inBonus() ? bonusMs() : elapsedMs()) + pen;
 }
 
 // ------------------------------------------------------------------ crash overlay
@@ -837,18 +1115,19 @@ const CRASHES = [
 let crashTimer = null;
 
 function showCrash(isNew) {
+  const p = prog();
   if (isNew) {
-    state.wrong += 1;
-    state.lockUntil = Date.now() + LOCKOUT_MS;
+    p.wrong += 1;
+    p.lockUntil = Date.now() + LOCKOUT_MS;
     save();
   }
-  const msg = CRASHES[state.wrong % CRASHES.length];
-  $('crash-text').innerHTML = `<span class="prompt">$</span> ./escape_the_heap --room ${esc(ROOMS[state.room].label.toLowerCase())}\n<span class="err">${esc(msg)}</span>`;
+  const msg = CRASHES[p.wrong % CRASHES.length];
+  $('crash-text').innerHTML = `<span class="prompt">$</span> ./escape_the_heap --room ${esc(list()[p.room].label.toLowerCase())}\n<span class="err">${esc(msg)}</span>`;
   $('o-crash').hidden = false;
   $('try').disabled = true;
   clearInterval(crashTimer);
   const step = () => {
-    const left = state.lockUntil - Date.now();
+    const left = p.lockUntil - Date.now();
     if (left <= 0) {
       clearInterval(crashTimer);
       $('o-crash').hidden = true;
@@ -866,12 +1145,19 @@ function showCrash(isNew) {
 // ------------------------------------------------------------------ cleared overlay
 
 function showCleared(i) {
-  const r = ROOMS[i];
-  const last = i === ROOMS.length - 1;
-  $('cleared-kicker').innerHTML = `${last ? 'Exit unlocked' : `Room ${r.label} cleared`} <span class="answer-chip">${esc(r.answer)}</span>`;
-  $('cleared-title').textContent = last ? 'The door swings open.' : ['Nice trace.', 'Unlocked.', 'Clean run.', 'Count confirmed.', 'Leak found.'][i] || 'Unlocked.';
-  $('cleared-why').innerHTML = r.why.replace('__FIX__', r.whyCode ? codeBlock(r.whyCode, ['clip', 'filename', 'seconds'], false) : '');
-  $('cleared-next').textContent = last ? 'Walk out' : `On to ${ROOMS[i + 1].label === 'EXIT' ? 'the exit' : `Room ${ROOMS[i + 1].label}`}`;
+  const rooms = list();
+  const r = rooms[i];
+  const last = i === rooms.length - 1;
+  if (inBonus()) {
+    $('cleared-kicker').innerHTML = `Bonus ${i + 1} cleared <span class="answer-chip">${esc(r.answer)}</span>`;
+    $('cleared-title').textContent = r.cheer;
+    $('cleared-next').textContent = last ? 'Climb back up' : `On to Bonus ${i + 2}`;
+  } else {
+    $('cleared-kicker').innerHTML = `${last ? 'Exit unlocked' : `Room ${r.label} cleared`} <span class="answer-chip">${esc(r.answer)}</span>`;
+    $('cleared-title').textContent = last ? 'The door swings open.' : ['Nice trace.', 'Unlocked.', 'Clean run.', 'Count confirmed.', 'Leak found.'][i] || 'Unlocked.';
+    $('cleared-next').textContent = last ? 'Walk out' : `On to ${rooms[i + 1].label === 'EXIT' ? 'the exit' : `Room ${rooms[i + 1].label}`}`;
+  }
+  $('cleared-why').innerHTML = r.why.replace('__FIX__', r.whyCode ? codeBlock(r.whyCode, r.whyIds || ['clip', 'filename', 'seconds'], false) : '');
   const overlay = $('o-cleared');
   // Restart the door animation on every open.
   overlay.querySelectorAll('.leaf, .cleared-card').forEach((el) => {
@@ -885,11 +1171,17 @@ function showCleared(i) {
 }
 
 $('cleared-next').addEventListener('click', () => {
+  const p = prog();
   $('o-cleared').hidden = true;
-  state.cleared = null;
-  state.roomEnteredAt = Date.now();
-  if (state.room >= ROOMS.length) {
-    state.finishedAt = state.finishedAt || Date.now();
+  p.cleared = null;
+  p.roomEnteredAt = Date.now();
+  if (p.room >= list().length) {
+    if (inBonus()) {
+      state.bonus.doneAt = state.bonus.doneAt || Date.now();
+      state.mode = null;
+    } else {
+      state.finishedAt = state.finishedAt || Date.now();
+    }
     save();
     renderEscaped();
     return;
@@ -900,14 +1192,18 @@ $('cleared-next').addEventListener('click', () => {
 
 // ------------------------------------------------------------------ escaped
 
+function tally(hints, wrong) {
+  return `${hints} hint${hints === 1 ? '' : 's'} (included) · ${wrong} wrong code${wrong === 1 ? '' : 's'}`;
+}
+
 function renderEscaped() {
   clearInterval(tick);
   show('v-escaped');
   $('esc-team').textContent = state.team;
+  $('esc-time').hidden = !!state.skipped;
   $('esc-time').textContent = fmt(elapsedMs());
-  const h = state.hints.length;
-  const w = state.wrong;
-  $('esc-stats').textContent = `${h} hint${h === 1 ? '' : 's'} (included) · ${w} wrong code${w === 1 ? '' : 's'}`;
+  $('esc-stats').textContent = state.skipped ? 'You escaped on another device.' : tally(state.hints.length, state.wrong);
+  renderBonusCard();
   const colors = ['#FF7900', '#8ACCE4', '#EDA941', '#F3CD47', '#2973B6', '#FFFFFF'];
   $('confetti').innerHTML = Array.from({ length: 70 }, (_, i) => {
     const left = Math.random() * 100;
@@ -916,6 +1212,47 @@ function renderEscaped() {
     return `<i style="left:${left}%;background:${colors[i % colors.length]};animation-duration:${dur}s;animation-delay:${delay}s"></i>`;
   }).join('');
 }
+
+// The card under the escape screen: an invitation, progress, or the bonus result.
+function renderBonusCard() {
+  const b = state.bonus;
+  const done = b ? b.room : 0;
+  $('bonus-pips').innerHTML = BONUS.map((r, i) => `<span class="${i < done ? 'done' : ''}">${r.label}</span>`).join('');
+  $('bonus-pips').hidden = !b;
+  $('bonus-go').hidden = !!(b && b.doneAt);
+  $('esc-hold').innerHTML = b && b.doneAt
+    ? 'You cleared the whole bonus floor. <b>Hold this screen up</b> so your instructor can see it.'
+    : 'Every owner let go, the count hit 0, and nothing leaked. <b>Hold this screen up</b> so your instructor can see it.';
+  if (!b) {
+    $('bonus-kicker').textContent = 'Done early?';
+    $('bonus-title').textContent = 'There\'s a bonus floor.';
+    $('bonus-text').innerHTML = `Five harder locks below the heap. Each one mixes pointers with something older: pass-by-value, maps, templates, copy constructors. <b>Your escape time is already final</b>, so nothing down there can hurt it.`;
+    $('bonus-go').textContent = 'Take the stairs down';
+  } else if (!b.doneAt) {
+    $('bonus-kicker').textContent = 'Bonus floor';
+    $('bonus-title').textContent = `${done} of ${BONUS.length} cleared`;
+    $('bonus-text').textContent = 'Your spot on the bonus floor is saved.';
+    $('bonus-go').textContent = `Back to Bonus ${done + 1}`;
+  } else {
+    $('bonus-kicker').textContent = 'Bonus floor cleared';
+    $('bonus-title').textContent = `${BONUS.length} of ${BONUS.length} in ${fmt(bonusMs())}`;
+    $('bonus-text').textContent = tally(b.hints.length, b.wrong);
+  }
+}
+
+function enterBonus() {
+  catchUp();
+  if (!state.bonus) {
+    const now = Date.now();
+    state.bonus = { room: 0, startedAt: now, roomEnteredAt: now, hints: [], wrong: 0, lockUntil: 0, cleared: null, doneAt: null };
+  }
+  state.mode = 'bonus';
+  save();
+  report('bonus');
+  startTicking();
+  renderRoom();
+}
+$('bonus-go').addEventListener('click', () => { $('confetti').innerHTML = ''; enterBonus(); });
 
 // ------------------------------------------------------------------ player events
 
@@ -928,9 +1265,23 @@ $('team-form').addEventListener('submit', (ev) => {
     .map((id) => $(id).value.replace(/;/g, ',').replace(/\s+/g, ' ').trim().slice(0, 40))
     .filter(Boolean);
   if (!players.length) return;
+  // A pair that escaped on another device skips to the bonus floor with the Exit's code.
+  const skip = normalize($('skip-code').value);
+  const exit = ROOMS[ROOMS.length - 1];
+  if (skip && !exit.hashes.includes(sha256(`${SALT}:${exit.id}:${skip}`))) {
+    $('skip-err').hidden = false;
+    return;
+  }
+  $('skip-err').hidden = true;
   state = fresh(team, players);
+  if (skip) {
+    state.room = ROOMS.length;
+    state.finishedAt = state.startedAt;
+    state.skipped = true;
+  }
   save();
   report('join');
+  if (skip) { enterBonus(); return; }
   startTicking();
   renderRoom();
 });
@@ -940,6 +1291,7 @@ $('resume-go').addEventListener('click', () => {
   if (!state) { renderStart(); return; }
   if (!state.id) state.id = newId();
   if (!state.roomEnteredAt) state.roomEnteredAt = Date.now();
+  catchUp();
   save();
   report('resume');
   startTicking();
@@ -975,17 +1327,25 @@ $('esc-reset').addEventListener('click', (ev) => {
 
 $('lock').addEventListener('submit', (ev) => {
   ev.preventDefault();
-  if (!state || state.lockUntil > Date.now()) return;
-  const r = ROOMS[state.room];
+  if (!state) return;
+  const p = prog();
+  if (p.lockUntil > Date.now()) return;
+  const r = list()[p.room];
   const guess = normalize($('code').value);
   if (!guess) return;
   if (r.hashes.includes(sha256(`${SALT}:${r.id}:${guess}`))) {
-    const solved = state.room;
-    state.room += 1;
-    state.cleared = solved;
-    if (state.room >= ROOMS.length) state.finishedAt = Date.now();
-    save();
-    report(state.finishedAt ? 'escape' : 'solve', { room: solved });
+    const solved = p.room;
+    p.room += 1;
+    p.cleared = solved;
+    if (inBonus()) {
+      if (p.room >= BONUS.length) p.doneAt = Date.now();
+      save();
+      report('solve', { room: BONUS_BASE + solved });
+    } else {
+      if (state.room >= ROOMS.length) state.finishedAt = Date.now();
+      save();
+      report(state.finishedAt ? 'escape' : 'solve', { room: solved });
+    }
     showCleared(solved);
   } else {
     const form = $('lock');
@@ -1005,8 +1365,9 @@ $('hint-btn').addEventListener('click', () => {
     setTimeout(() => { if (Date.now() - hintArmed >= 4000) $('hint-tap').hidden = true; }, 4100);
     return;
   }
-  const r = ROOMS[state.room];
-  if (!state.hints.includes(r.id)) state.hints.push(r.id);
+  const p = prog();
+  const r = list()[p.room];
+  if (!p.hints.includes(r.id)) p.hints.push(r.id);
   save();
   report('hint');
   hintArmed = 0;
@@ -1023,12 +1384,12 @@ function startTicking() {
   tick = setInterval(updateClock, 500);
   // A once-a-minute snapshot keeps the scoreboard current even if an event report was lost.
   clearInterval(heartbeat);
-  heartbeat = setInterval(() => { if (state && !state.finishedAt) report('ping'); }, 60000);
+  heartbeat = setInterval(() => { if (state && (!state.finishedAt || inBonus())) report('ping'); }, 60000);
 }
 
 // ------------------------------------------------------------------ boot
 
-window.ESCAPE_TEST = { sha256, normalize, ROOMS, SALT };
+window.ESCAPE_TEST = { sha256, normalize, ROOMS, BONUS, SALT };
 
 renderStart();
 })();
